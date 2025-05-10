@@ -19,14 +19,14 @@ const AccountHistoryTable = () => {
           // Transform the data to make it more readable
           const transformedData = data.items.map((value) => {
             return {
-              Date: new Date(value.timestamp).toLocaleDateString(),
-              Type: value.transaction_type,
+              Date: new Date(value["executed-at"]).toLocaleDateString(),
+              Action: value.action,
               Symbol: value.symbol,
               Quantity: value.quantity,
               Price: value.price,
-              Amount: value.amount,
+              Value:
+                value["value-effect"] === "Debit" ? -value.value : value.value,
               Description: value.description,
-              Status: value.status,
             };
           });
           setHistory(transformedData);
@@ -49,13 +49,12 @@ const AccountHistoryTable = () => {
 
   const columns = [
     "Date",
-    "Type",
+    "Action",
     "Symbol",
     "Quantity",
     "Price",
-    "Amount",
+    "Value",
     "Description",
-    "Status",
   ];
 
   return (
