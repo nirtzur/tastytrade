@@ -4,6 +4,7 @@ const {
   initializeTastytrade,
   getQuote,
   getNextOption,
+  getAccountHistory,
 } = require("./tastytrade");
 const { getSP500Symbols } = require("./sp500");
 const { getSectorETFs } = require("./etfs");
@@ -197,5 +198,6 @@ async function main() {
 
 module.exports = {
   initializeTastytrade,
-  processSymbols
+  processSymbols,
+  getAccountHistory
 };

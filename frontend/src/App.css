@@ -1,5 +1,23 @@
 .App {
   text-align: center;
+  padding: 20px;
+}
+
+.tables-container {
+  display: flex;
+  gap: 30px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.table-section {
+  flex: 1;
+  min-width: 400px;
+}
+
+.table-section h2 {
+  margin-bottom: 20px;
+  color: #333;
 }
 
 .App-logo {

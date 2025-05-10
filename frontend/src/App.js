@@ -1,5 +1,6 @@
 import './App.css';
 import DataTable from './components/DataTable';
+import AccountHistoryTable from './components/AccountHistoryTable';
 import { useEffect, useState } from 'react';
 
 function App() {
@@ -35,8 +36,16 @@ function App() {
 
   return (
     <div className="App">
-      <h1>Trading Data</h1>
-      <DataTable columns={columns} data={data} />
+      <h1>Trading Dashboard</h1>
+      <div className="tables-container">
+        <div className="table-section">
+          <h2>Current Trading Data</h2>
+          <DataTable columns={columns} data={data} />
+        </div>
+        <div className="table-section">
+          <AccountHistoryTable />
+        </div>
+      </div>
     </div>
   );
 }

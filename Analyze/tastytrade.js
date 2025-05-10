@@ -205,8 +205,35 @@ async function getNextOption(symbol, sessionToken, quoteData) {
   }
 }
 
+async function getAccountHistory(sessionToken) {
+  try {
+    if (!sessionToken) {
+      throw new Error("Session token is required");
+    }
+
+    const response = await makeRequest(
+      "GET",
+      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions`,
+      sessionToken
+    );
+
+    if (!response?.data) {
+      throw new Error("No account history data received");
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Account history error details:",
+      error.response?.data || error.message
+    );
+    throw new Error(`Failed to fetch account history: ${error.message}`);
+  }
+}
+
 module.exports = {
   initializeTastytrade,
   getQuote,
   getNextOption,
+  getAccountHistory,
 };
