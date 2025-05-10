@@ -17,7 +17,7 @@ const AccountHistoryTable = () => {
 
         if (typeof data === "object") {
           // Transform the data to make it more readable
-          const transformedData = Object.entries(data).map(([key, value]) => {
+          const transformedData = data.items.map((value) => {
             return {
               Date: new Date(value.timestamp).toLocaleDateString(),
               Type: value.transaction_type,
