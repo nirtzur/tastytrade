@@ -36,7 +36,7 @@ async function initializeServer() {
 // API endpoint to get account history
 app.get("/api/account-history", async (req, res) => {
   try {
-    if (!tastytradeClient) {
+    if (!tastytradeSessionToken) {
       throw new Error("Tastytrade connection not initialized");
     }
 
@@ -50,7 +50,7 @@ app.get("/api/account-history", async (req, res) => {
 // API endpoint to get trading data
 app.get("/api/trading-data", async (req, res) => {
   try {
-    if (!tastytradeClient) {
+    if (!tastytradeSessionToken) {
       throw new Error("Tastytrade connection not initialized");
     }
 
