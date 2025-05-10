@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { initializeTastytrade, processSymbols } = require('./index');
+const { initializeTastytrade, processSymbols } = require('./Analyze/index');
 
 const app = express();
 app.use(cors());

@@ -195,5 +195,7 @@ async function main() {
   }
 }
 
-// Run the application
-main();
+module.exports = {
+  initializeTastytrade,
+  processSymbols
+};
