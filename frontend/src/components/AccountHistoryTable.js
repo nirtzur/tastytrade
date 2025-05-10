@@ -6,6 +6,7 @@ const AccountHistoryTable = () => {
   const [history, setHistory] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
+  const [showMoneyMovement, setShowMoneyMovement] = React.useState(false);
 
   React.useEffect(() => {
     const fetchHistory = async () => {
@@ -59,10 +60,32 @@ const AccountHistoryTable = () => {
     "Description",
   ];
 
+  const displayedHistory = showMoneyMovement
+    ? history
+    : history.filter((h) => h.Type !== "Money Movement");
+
+  const totalValue = displayedHistory.reduce(
+    (sum, item) => sum + (Number(item.Value) || 0),
+    0
+  );
+
   return (
     <div className="account-history-container">
-      <h2>Account History</h2>
-      <DataTable columns={columns} data={history} />
+      <label>
+        <input
+          type="checkbox"
+          checked={showMoneyMovement}
+          onChange={(e) => setShowMoneyMovement(e.target.checked)}
+        />
+        Show Money Movement
+      </label>
+      <DataTable
+        columns={columns}
+        data={displayedHistory}
+      />
+      <div className="summary-section">
+        <h3>Total Value: ${totalValue.toFixed(2)}</h3>
+      </div>
     </div>
   );
 };
