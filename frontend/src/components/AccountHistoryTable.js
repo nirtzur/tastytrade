@@ -20,6 +20,7 @@ const AccountHistoryTable = () => {
           const transformedData = data.items.map((value) => {
             return {
               Date: new Date(value["executed-at"]).toLocaleDateString(),
+              Type: value["transaction-type"],
               Action: value.action,
               Symbol: value.symbol,
               Quantity: value.quantity,
@@ -49,6 +50,7 @@ const AccountHistoryTable = () => {
 
   const columns = [
     "Date",
+    "Type",
     "Action",
     "Symbol",
     "Quantity",
