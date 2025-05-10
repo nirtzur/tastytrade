@@ -213,7 +213,7 @@ async function getAccountHistory(sessionToken) {
 
     const response = await makeRequest(
       "GET",
-      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions`,
+      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-date=2024-11-26`,
       sessionToken
     );
 
