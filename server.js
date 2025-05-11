@@ -40,7 +40,14 @@ app.get("/api/account-history", async (req, res) => {
       throw new Error("Tastytrade connection not initialized");
     }
 
-    res.json(accountHistory);
+    const { "start-date": startDate, "end-date": endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      throw new Error("Both start-date and end-date query parameters are required");
+    }
+
+    const filteredHistory = await getAccountHistory(tastytradeSessionToken, startDate, endDate);
+    res.json(filteredHistory);
   } catch (error) {
     console.error("Error fetching account history:", error);
     res.status(500).json({ error: error.message });

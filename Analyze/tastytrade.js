@@ -205,15 +205,15 @@ async function getNextOption(symbol, sessionToken, quoteData) {
   }
 }
 
-async function getAccountHistory(sessionToken) {
+async function getAccountHistory(sessionToken, startDate, endDate) {
   try {
     if (!sessionToken) {
       throw new Error("Session token is required");
     }
 
-    const response = await makeRequest(
+    let response = await makeRequest(
       "GET",
-      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-date=2024-11-26`,
+      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-date=${startDate}&end-date=${endDate}`,
       sessionToken
     );
 
@@ -221,7 +221,23 @@ async function getAccountHistory(sessionToken) {
       throw new Error("No account history data received");
     }
 
-    return response.data;
+    let allTransactions = response.data.items;
+    while (
+      response.pagination &&
+      response.pagination["page-offset"] < response.pagination["total-pages"]
+    ) {
+      const nextPageOffset = response.pagination["page-offset"] + 1;
+      response = await makeRequest(
+        "GET",
+        `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-date=${startDate}&end-date=${endDate}&page-offset=${nextPageOffset}`,
+        sessionToken
+      );
+      if (!response?.data) {
+        throw new Error("No account history data received on next page");
+      }
+      allTransactions = allTransactions.concat(response.data.items);
+    }
+    return allTransactions;
   } catch (error) {
     console.error(
       "Account history error details:",
