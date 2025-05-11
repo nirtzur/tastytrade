@@ -139,23 +139,25 @@ const AccountHistoryTable = () => {
 
       <PositionsTable />
 
-      <Box sx={{ flexGrow: 1, overflow: "auto" }}>
-        <Typography variant="h6" gutterBottom>
-          Transaction History
-        </Typography>
-        <DataTable columns={columns} data={displayedHistory} />
-      </Box>
       <Box
         sx={{
           padding: 2,
-          borderTop: 1,
-          borderColor: "divider",
+          marginY: 2,
           backgroundColor: "background.paper",
+          borderRadius: 1,
+          boxShadow: 1,
         }}
       >
         <Typography variant="h6">
           Total Value: ${totalValue.toFixed(2)}
         </Typography>
+      </Box>
+
+      <Box sx={{ flexGrow: 1, overflow: "auto" }}>
+        <Typography variant="h6" gutterBottom>
+          Transaction History
+        </Typography>
+        <DataTable columns={columns} data={displayedHistory} />
       </Box>
     </Box>
   );
