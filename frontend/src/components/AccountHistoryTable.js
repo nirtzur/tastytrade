@@ -8,7 +8,9 @@ const AccountHistoryTable = () => {
   const [error, setError] = React.useState(null);
   const [showMoneyMovement, setShowMoneyMovement] = React.useState(false);
   const [startDate, setStartDate] = React.useState("2024-11-01");
-  const [endDate, setEndDate] = React.useState(new Date().toISOString().split("T")[0]);
+  const [endDate, setEndDate] = React.useState(
+    new Date().toISOString().split("T")[0]
+  );
 
   React.useEffect(() => {
     const fetchHistory = async () => {

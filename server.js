@@ -43,10 +43,16 @@ app.get("/api/account-history", async (req, res) => {
     const { "start-date": startDate, "end-date": endDate } = req.query;
 
     if (!startDate || !endDate) {
-      throw new Error("Both start-date and end-date query parameters are required");
+      throw new Error(
+        "Both start-date and end-date query parameters are required"
+      );
     }
 
-    const filteredHistory = await getAccountHistory(tastytradeSessionToken, startDate, endDate);
+    const filteredHistory = await getAccountHistory(
+      tastytradeSessionToken,
+      startDate,
+      endDate
+    );
     res.json(filteredHistory);
   } catch (error) {
     console.error("Error fetching account history:", error);
