@@ -253,9 +253,36 @@ async function getAccountHistory(sessionToken, startDate, endDate) {
   }
 }
 
+async function getPositions(sessionToken) {
+  try {
+    if (!sessionToken) {
+      throw new Error("Session token is required");
+    }
+
+    const response = await makeRequest(
+      "GET",
+      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/positions`,
+      sessionToken
+    );
+
+    if (!response?.data?.items) {
+      throw new Error("No positions data received");
+    }
+
+    return response.data.items;
+  } catch (error) {
+    console.error(
+      "Positions error details:",
+      error.response?.data || error.message
+    );
+    throw new Error(`Failed to fetch positions: ${error.message}`);
+  }
+}
+
 module.exports = {
   initializeTastytrade,
   getQuote,
   getNextOption,
   getAccountHistory,
+  getPositions,
 };

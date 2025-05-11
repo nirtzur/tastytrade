@@ -4,7 +4,8 @@ const {
   initializeTastytrade,
   processSymbols,
   getAccountHistory,
-} = require("./Analyze/index");
+  getPositions,
+} = require("./Analyze/tastytrade");
 
 const app = express();
 app.use(cors());
@@ -82,17 +83,8 @@ app.get("/api/positions", async (req, res) => {
       throw new Error("Tastytrade connection not initialized");
     }
 
-    const response = await fetch(
-      `${process.env.TASTYTRADE_BASE_URL}/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/positions`,
-      {
-        headers: {
-          Authorization: tastytradeSessionToken,
-        },
-      }
-    );
-
-    const data = await response.json();
-    res.json(data.data.items);
+    const positions = await getPositions(tastytradeSessionToken);
+    res.json(positions);
   } catch (error) {
     console.error("Error fetching positions:", error);
     res.status(500).json({ error: error.message });
