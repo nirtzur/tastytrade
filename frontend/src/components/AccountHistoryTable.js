@@ -61,13 +61,13 @@ const AccountHistoryTable = () => {
 
   const columns = [
     "Date",
-    "Type",
-    "Action",
     "Symbol",
     "Quantity",
     "Price",
     "Value",
     "Description",
+    "Type",
+    "Action",
   ];
 
   const displayedHistory = showMoneyMovement
@@ -80,11 +80,24 @@ const AccountHistoryTable = () => {
   );
 
   return (
-    <Box sx={{ maxWidth: 1200, margin: "0 auto", padding: 2 }}>
-      <Typography variant="h4" gutterBottom>
-        Account History
-      </Typography>
-      <Box sx={{ display: "flex", gap: 2, marginBottom: 2 }}>
+    <Box
+      sx={{
+        width: "100%",
+        height: "100vh",
+        padding: { xs: 1, sm: 2, md: 3 },
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          gap: 2,
+          marginBottom: 2,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
         <TextField
           label="Start Date"
           type="date"
@@ -99,18 +112,27 @@ const AccountHistoryTable = () => {
           onChange={(e) => setEndDate(e.target.value)}
           InputLabelProps={{ shrink: true }}
         />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={showMoneyMovement}
+              onChange={(e) => setShowMoneyMovement(e.target.checked)}
+            />
+          }
+          label="Show Money Movement"
+        />
       </Box>
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={showMoneyMovement}
-            onChange={(e) => setShowMoneyMovement(e.target.checked)}
-          />
-        }
-        label="Show Money Movement"
-      />
-      <DataTable columns={columns} data={displayedHistory} />
-      <Box sx={{ textAlign: "right", marginTop: 2 }}>
+      <Box sx={{ flexGrow: 1, overflow: "auto" }}>
+        <DataTable columns={columns} data={displayedHistory} />
+      </Box>
+      <Box
+        sx={{
+          padding: 2,
+          borderTop: 1,
+          borderColor: "divider",
+          backgroundColor: "background.paper",
+        }}
+      >
         <Typography variant="h6">
           Total Value: ${totalValue.toFixed(2)}
         </Typography>
