@@ -75,6 +75,30 @@ app.get("/api/trading-data", async (req, res) => {
   }
 });
 
+// API endpoint to get open positions
+app.get("/api/positions", async (req, res) => {
+  try {
+    if (!tastytradeSessionToken) {
+      throw new Error("Tastytrade connection not initialized");
+    }
+
+    const response = await fetch(
+      `${process.env.TASTYTRADE_BASE_URL}/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/positions`,
+      {
+        headers: {
+          Authorization: tastytradeSessionToken,
+        },
+      }
+    );
+
+    const data = await response.json();
+    res.json(data.data.items);
+  } catch (error) {
+    console.error("Error fetching positions:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 
 // Initialize server and start listening

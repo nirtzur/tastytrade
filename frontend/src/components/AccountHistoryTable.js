@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import DataTable from "./DataTable";
+import PositionsTable from "./PositionsTable";
 import {
   Box,
   Checkbox,
@@ -13,7 +14,7 @@ const AccountHistoryTable = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showMoneyMovement, setShowMoneyMovement] = useState(false);
-  const [startDate, setStartDate] = useState("2024-11-01");
+  const [startDate, setStartDate] = useState("2024-11-25");
   const [endDate, setEndDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -135,7 +136,13 @@ const AccountHistoryTable = () => {
           label="Show Money Movement"
         />
       </Box>
+
+      <PositionsTable />
+
       <Box sx={{ flexGrow: 1, overflow: "auto" }}>
+        <Typography variant="h6" gutterBottom>
+          Transaction History
+        </Typography>
         <DataTable columns={columns} data={displayedHistory} />
       </Box>
       <Box
