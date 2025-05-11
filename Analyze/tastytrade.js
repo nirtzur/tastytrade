@@ -269,15 +269,43 @@ async function getPositions(sessionToken) {
       throw new Error("No positions data received");
     }
 
-    const symbolCounts = response.data.items.reduce((acc, item) => {
+    // Group positions by underlying symbol
+    const positionsBySymbol = response.data.items.reduce((acc, item) => {
       const symbol = item["underlying-symbol"];
-      acc[symbol] = (acc[symbol] || 0) + 1;
+      if (!acc[symbol]) {
+        acc[symbol] = {
+          equity: null,
+          option: null,
+        };
+      }
+
+      if (item["instrument-type"] === "Equity") {
+        acc[symbol].equity = item;
+      } else if (item["instrument-type"] === "Equity Option") {
+        acc[symbol].option = item;
+      }
       return acc;
     }, {});
 
-    return response.data.items.filter(
-      (item) => symbolCounts[item["underlying-symbol"]] > 1
-    );
+    // Convert grouped positions into aggregated records
+    const accountHistory = await getAccountHistory(sessionToken);
+
+    const aggregatedPositions = Object.entries(positionsBySymbol)
+      .filter(([_, data]) => data.equity && data.option)
+      .map(([symbol, data]) => {
+        const optionSymbol = data.option.symbol;
+        const match = optionSymbol.match(/(\d{5})(\d{3})$/);
+        const optionPrice = match ? parseFloat(`${match[1]}.${match[2]}`) : 0;
+
+        return {
+          ...data.equity,
+          "close-price": data.equity["close-price"],
+          "option-price": optionPrice,
+          "average-open-price": data.equity["average-open-price"],
+        };
+      });
+
+    return aggregatedPositions;
   } catch (error) {
     console.error(
       "Positions error details:",

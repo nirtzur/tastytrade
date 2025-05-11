@@ -18,8 +18,9 @@ const PositionsTable = () => {
           const transformedData = data.map((position) => ({
             Symbol: position.symbol,
             Quantity: position.quantity,
-            Price: position["close-price"],
-            Value: position["mark-value"],
+            "Strike Price": position["close-price"],
+            "Option Price": position["option-price"],
+            "Acquisition Price": position["average-open-price"],
             Cost: position["average-cost"],
             "P/L": position["unrealized-gain-loss"],
           }));
@@ -41,7 +42,15 @@ const PositionsTable = () => {
   if (loading) return <Typography>Loading positions...</Typography>;
   if (error) return <Typography color="error">Error: {error}</Typography>;
 
-  const columns = ["Symbol", "Quantity", "Price", "Value", "Cost", "P/L"];
+  const columns = [
+    "Symbol",
+    "Quantity",
+    "Strike Price",
+    "Option Price",
+    "Acquisition Price",
+    "Cost",
+    "P/L",
+  ];
 
   return (
     <Box sx={{ marginBottom: 3 }}>
