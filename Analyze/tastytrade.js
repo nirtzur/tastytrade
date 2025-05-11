@@ -269,7 +269,15 @@ async function getPositions(sessionToken) {
       throw new Error("No positions data received");
     }
 
-    return response.data.items;
+    const symbolCounts = response.data.items.reduce((acc, item) => {
+      const symbol = item["underlying-symbol"];
+      acc[symbol] = (acc[symbol] || 0) + 1;
+      return acc;
+    }, {});
+
+    return response.data.items.filter(
+      (item) => symbolCounts[item["underlying-symbol"]] > 1
+    );
   } catch (error) {
     console.error(
       "Positions error details:",

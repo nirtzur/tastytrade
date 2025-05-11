@@ -18,7 +18,7 @@ const PositionsTable = () => {
           const transformedData = data.map((position) => ({
             Symbol: position.symbol,
             Quantity: position.quantity,
-            Price: position["average-open-price"],
+            Price: position["close-price"],
             Value: position["mark-value"],
             Cost: position["average-cost"],
             "P/L": position["unrealized-gain-loss"],
