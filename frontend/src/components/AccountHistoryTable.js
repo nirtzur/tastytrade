@@ -1,18 +1,24 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import DataTable from "./DataTable";
-import "./AccountHistoryTable.css";
+import {
+  Box,
+  Checkbox,
+  FormControlLabel,
+  TextField,
+  Typography,
+} from "@mui/material";
 
 const AccountHistoryTable = () => {
-  const [history, setHistory] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(null);
-  const [showMoneyMovement, setShowMoneyMovement] = React.useState(false);
-  const [startDate, setStartDate] = React.useState("2024-11-01");
-  const [endDate, setEndDate] = React.useState(
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showMoneyMovement, setShowMoneyMovement] = useState(false);
+  const [startDate, setStartDate] = useState("2024-11-01");
+  const [endDate, setEndDate] = useState(
     new Date().toISOString().split("T")[0]
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchHistory = async () => {
       setLoading(true);
       try {
@@ -22,7 +28,6 @@ const AccountHistoryTable = () => {
         const data = await response.json();
 
         if (Array.isArray(data)) {
-          // Transform the data to make it more readable
           const transformedData = data.map((value) => {
             return {
               Date: new Date(value["executed-at"]).toLocaleDateString(),
@@ -51,8 +56,8 @@ const AccountHistoryTable = () => {
     fetchHistory();
   }, [startDate, endDate]);
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (loading) return <Typography>Loading...</Typography>;
+  if (error) return <Typography color="error">Error: {error}</Typography>;
 
   const columns = [
     "Date",
@@ -75,38 +80,42 @@ const AccountHistoryTable = () => {
   );
 
   return (
-    <div className="account-history-container">
-      <div className="date-filters">
-        <label>
-          Start Date:
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
-        </label>
-        <label>
-          End Date:
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-          />
-        </label>
-      </div>
-      <label>
-        <input
-          type="checkbox"
-          checked={showMoneyMovement}
-          onChange={(e) => setShowMoneyMovement(e.target.checked)}
+    <Box sx={{ maxWidth: 1200, margin: "0 auto", padding: 2 }}>
+      <Typography variant="h4" gutterBottom>
+        Account History
+      </Typography>
+      <Box sx={{ display: "flex", gap: 2, marginBottom: 2 }}>
+        <TextField
+          label="Start Date"
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
         />
-        Show Money Movement
-      </label>
+        <TextField
+          label="End Date"
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+      </Box>
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={showMoneyMovement}
+            onChange={(e) => setShowMoneyMovement(e.target.checked)}
+          />
+        }
+        label="Show Money Movement"
+      />
       <DataTable columns={columns} data={displayedHistory} />
-      <div className="summary-section">
-        <h3>Total Value: ${totalValue.toFixed(2)}</h3>
-      </div>
-    </div>
+      <Box sx={{ textAlign: "right", marginTop: 2 }}>
+        <Typography variant="h6">
+          Total Value: ${totalValue.toFixed(2)}
+        </Typography>
+      </Box>
+    </Box>
   );
 };
 
