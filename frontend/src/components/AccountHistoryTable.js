@@ -19,6 +19,7 @@ const AccountHistoryTable = () => {
     new Date().toISOString().split("T")[0]
   );
   const [funding, setFunding] = useState(111000);
+  const [positionsTotalValue, setPositionsTotalValue] = useState(0);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -81,7 +82,7 @@ const AccountHistoryTable = () => {
     0
   );
 
-  const totalValue = historyTotal + funding;
+  const totalValue = historyTotal + positionsTotalValue;
 
   return (
     <Box
@@ -137,7 +138,7 @@ const AccountHistoryTable = () => {
         />
       </Box>
 
-      <PositionsTable />
+      <PositionsTable onTotalValueChange={setPositionsTotalValue} />
 
       <Box
         sx={{
