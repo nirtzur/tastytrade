@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import DataTable from "./DataTable";
 import { Box, Typography } from "@mui/material";
 
-const PositionsTable = () => {
+const PositionsTable = ({ onTotalValueChange }) => {
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -37,6 +37,15 @@ const PositionsTable = () => {
             };
           });
           setPositions(transformedData);
+
+          // Calculate and pass up total value
+          const totalValue = transformedData.reduce(
+            (sum, position) => sum + parseFloat(position.Value),
+            0
+          );
+          if (onTotalValueChange) {
+            onTotalValueChange(totalValue);
+          }
         } else {
           throw new Error("Invalid positions data format");
         }
@@ -49,7 +58,7 @@ const PositionsTable = () => {
     };
 
     fetchPositions();
-  }, []);
+  }, [onTotalValueChange]);
 
   if (loading) return <Typography>Loading positions...</Typography>;
   if (error) return <Typography color="error">Error: {error}</Typography>;
@@ -79,10 +88,6 @@ const PositionsTable = () => {
         Open Positions
       </Typography>
       <DataTable columns={columns} data={positions} />
-      <Box sx={{ mt: 2, display: "flex", gap: 4, justifyContent: "flex-end" }}>
-        <Typography>Total Value: ${totalValue.toFixed(2)}</Typography>
-        <Typography>Total P/L: ${totalPnL.toFixed(2)}</Typography>
-      </Box>
     </Box>
   );
 };
