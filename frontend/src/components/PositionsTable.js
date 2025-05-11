@@ -19,8 +19,9 @@ const PositionsTable = () => {
             const strikePrice = parseFloat(position["close-price"]) || 0;
             const optionPrice = parseFloat(position["option-price"]) || 0;
             const quantity = parseFloat(position.quantity) || 0;
-            const acquisitionPrice = parseFloat(position["average-open-price"]) || 0;
-            
+            const acquisitionPrice =
+              parseFloat(position["average-open-price"]) || 0;
+
             const value = quantity * Math.min(strikePrice, optionPrice);
             const acquisitionCost = quantity * acquisitionPrice;
             const pnl = value - acquisitionCost;
@@ -63,8 +64,14 @@ const PositionsTable = () => {
     "P/L",
   ];
 
-  const totalValue = positions.reduce((sum, position) => sum + parseFloat(position.Value), 0);
-  const totalPnL = positions.reduce((sum, position) => sum + parseFloat(position["P/L"]), 0);
+  const totalValue = positions.reduce(
+    (sum, position) => sum + parseFloat(position.Value),
+    0
+  );
+  const totalPnL = positions.reduce(
+    (sum, position) => sum + parseFloat(position["P/L"]),
+    0
+  );
 
   return (
     <Box sx={{ marginBottom: 3 }}>
@@ -72,13 +79,9 @@ const PositionsTable = () => {
         Open Positions
       </Typography>
       <DataTable columns={columns} data={positions} />
-      <Box sx={{ mt: 2, display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-        <Typography>
-          Total Value: ${totalValue.toFixed(2)}
-        </Typography>
-        <Typography>
-          Total P/L: ${totalPnL.toFixed(2)}
-        </Typography>
+      <Box sx={{ mt: 2, display: "flex", gap: 4, justifyContent: "flex-end" }}>
+        <Typography>Total Value: ${totalValue.toFixed(2)}</Typography>
+        <Typography>Total P/L: ${totalPnL.toFixed(2)}</Typography>
       </Box>
     </Box>
   );
