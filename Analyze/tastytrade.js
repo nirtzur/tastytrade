@@ -211,6 +211,12 @@ async function getAccountHistory(sessionToken, startDate, endDate) {
       throw new Error("Session token is required");
     }
 
+    const defaultStartDate = "2024-11-01";
+    const defaultEndDate = new Date().toISOString().split("T")[0];
+
+    startDate = startDate || defaultStartDate;
+    endDate = endDate || defaultEndDate;
+
     let response = await makeRequest(
       "GET",
       `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-date=${startDate}&end-date=${endDate}`,
