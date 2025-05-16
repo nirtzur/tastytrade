@@ -2,17 +2,36 @@ const axios = require("axios");
 const sleep = require("./utils/sleep");
 require("dotenv").config();
 
+// Validate required environment variables
+const REQUIRED_ENV_VARS = [
+  "TASTYTRADE_BASE_URL",
+  "TASTYTRADE_USERNAME",
+  "TASTYTRADE_PASSWORD",
+  "TASTYTRADE_ACCOUNT_NUMBER",
+];
+
+function validateEnvironment() {
+  const missing = REQUIRED_ENV_VARS.filter((varName) => !process.env[varName]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(", ")}`
+    );
+  }
+}
+
 const baseUrl = process.env.TASTYTRADE_BASE_URL;
 
 // Parse command line arguments for debug mode
 const isDebug = process.argv.includes("-debug");
 
+// Enhanced request handling with retries
 async function makeRequest(
   method,
   endpoint,
   token = null,
   data = null,
-  params = null
+  params = null,
+  retries = 3
 ) {
   const config = {
     method,
@@ -22,6 +41,7 @@ async function makeRequest(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
+    timeout: 10000, // 10 second timeout
   };
 
   if (token) {
@@ -40,22 +60,46 @@ async function makeRequest(
     const response = await axios(config);
     return response.data;
   } catch (error) {
-    if (error.response?.status === 429) {
-      await sleep();
-      return makeRequest(method, endpoint, token, data, params);
+    if (error.response?.status === 429 && retries > 0) {
+      await sleep(1000 * (4 - retries)); // Exponential backoff
+      return makeRequest(method, endpoint, token, data, params, retries - 1);
     }
-    console.error("Request failed:", error.message);
-    console.error("Response status:", error.response?.status);
-    console.error("Response data:", error.response?.data);
-    throw error;
+
+    const errorDetails = {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    };
+
+    if (isDebug) {
+      console.error("Request failed:", errorDetails);
+    }
+
+    throw new Error(`API request failed: ${error.message}`);
   }
 }
 
 async function initializeTastytrade() {
   try {
+    validateEnvironment();
+    console.log(
+      "Initializing Tastytrade with URL:",
+      process.env.TASTYTRADE_BASE_URL
+    );
+
+    if (!process.env.TASTYTRADE_USERNAME || !process.env.TASTYTRADE_PASSWORD) {
+      throw new Error("Missing required credentials in environment variables");
+    }
+
     const response = await makeRequest("post", "/sessions", null, {
       login: process.env.TASTYTRADE_USERNAME,
       password: process.env.TASTYTRADE_PASSWORD,
+    });
+
+    console.log("Login response received:", {
+      status: "success",
+      hasData: !!response?.data,
+      hasSessionToken: !!response?.data?.["session-token"],
     });
 
     const sessionToken = response?.data?.["session-token"];
@@ -67,10 +111,16 @@ async function initializeTastytrade() {
     const token = sessionToken.replace(/\n/g, "");
     return token;
   } catch (error) {
-    console.error(
-      "Authentication error details:",
-      error.response?.data || error.message
-    );
+    console.error("Authentication error details:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      hasEnvVars: {
+        baseUrl: !!process.env.TASTYTRADE_BASE_URL,
+        username: !!process.env.TASTYTRADE_USERNAME,
+        password: !!process.env.TASTYTRADE_PASSWORD,
+      },
+    });
     throw new Error(`Failed to authenticate with Tastytrade: ${error.message}`);
   }
 }

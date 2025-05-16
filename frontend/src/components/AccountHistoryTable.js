@@ -26,7 +26,7 @@ const AccountHistoryTable = () => {
       setLoading(true);
       try {
         const response = await fetch(
-          `http://localhost:3001/api/account-history?start-date=${startDate}&end-date=${endDate}`
+          `${process.env.REACT_APP_API_URL}/api/account-history?start-date=${startDate}&end-date=${endDate}`
         );
         const data = await response.json();
 

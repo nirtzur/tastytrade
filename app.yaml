@@ -1,0 +1,50 @@
+runtime: nodejs20
+env: standard
+instance_class: F1
+
+automatic_scaling:
+  target_cpu_utilization: 0.65
+  min_instances: 1
+  max_instances: 10
+  min_idle_instances: 1
+  max_idle_instances: automatic
+  min_pending_latency: 30ms
+  max_pending_latency: automatic
+  max_concurrent_requests: 50
+
+env_variables:
+  NODE_ENV: "production"
+  TASTYTRADE_BASE_URL: "https://api.tastytrade.com"
+
+service_account: tastytrade-service-account@tastytrade-459820.iam.gserviceaccount.com
+
+runtime_config:
+  python_version: 3
+
+entrypoint: node server.js
+
+handlers:
+  - url: /api/.*
+    script: auto
+    secure: always
+    
+  - url: /(.*\.(json|ico|js|css|png|txt|svg|woff|woff2|ttf))$
+    static_files: frontend/build/\1
+    upload: frontend/build/.*\.(json|ico|js|css|png|txt|svg|woff|woff2|ttf)$
+    secure: always
+    http_headers:
+      X-Content-Type-Options: nosniff
+      X-Frame-Options: DENY
+      X-XSS-Protection: '1; mode=block'
+      Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+  - url: /.*
+    static_files: frontend/build/index.html
+    upload: frontend/build/index.html
+    secure: always
+    http_headers:
+      X-Content-Type-Options: nosniff
+      X-Frame-Options: DENY
+      X-XSS-Protection: '1; mode=block'
+      Strict-Transport-Security: max-age=31536000; includeSubDomains
+      Cache-Control: no-cache

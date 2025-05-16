@@ -1,0 +1,10 @@
+.git
+.gitignore
+node_modules/
+npm-debug.log
+*.pid
+.env
+.env.*
+frontend/node_modules/
+frontend/.env
+frontend/.env.*

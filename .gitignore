@@ -30,3 +30,4 @@ yarn-error.log*
 .Trashes
 ehthumbs.db
 Thumbs.db
+env_variables.yaml
