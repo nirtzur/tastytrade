@@ -37,10 +37,10 @@ const VisualPage = () => {
             transaction["instrument-type"]?.toLowerCase().includes("option")
           ) {
             const date = new Date(transaction["executed-at"]);
-            // Get the monday of the week
-            const monday = new Date(date);
-            monday.setDate(date.getDate() - date.getDay() + 1);
-            const weekKey = monday.toISOString().split("T")[0];
+            // Get the Sunday of the week (next Sunday if it's currently Sunday)
+            const sunday = new Date(date);
+            sunday.setDate(date.getDate() + ((7 - date.getDay()) % 7));
+            const weekKey = sunday.toISOString().split("T")[0];
 
             if (!acc[weekKey]) {
               acc[weekKey] = {
@@ -50,10 +50,11 @@ const VisualPage = () => {
               };
             }
 
+            const numericValue = parseFloat(transaction.value);
             const value =
               transaction["value-effect"] === "Debit"
-                ? -transaction.value
-                : transaction.value;
+                ? -numericValue
+                : numericValue;
 
             acc[weekKey].totalValue += value;
             acc[weekKey].transactionCount += 1;
