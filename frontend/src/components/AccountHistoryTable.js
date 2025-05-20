@@ -14,12 +14,20 @@ const AccountHistoryTable = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showMoneyMovement, setShowMoneyMovement] = useState(false);
-  const [startDate, setStartDate] = useState("2024-11-25");
+  const [startDate, setStartDate] = useState(() => {
+    const savedStartDate = localStorage.getItem("accountHistoryStartDate");
+    return savedStartDate || "2024-11-25";
+  });
   const [endDate, setEndDate] = useState(
     new Date().toISOString().split("T")[0]
   );
   const [funding, setFunding] = useState(111000);
   const [positionsTotalValue, setPositionsTotalValue] = useState(0);
+
+  useEffect(() => {
+    // Store startDate in localStorage whenever it changes
+    localStorage.setItem("accountHistoryStartDate", startDate);
+  }, [startDate]);
 
   useEffect(() => {
     const fetchHistory = async () => {

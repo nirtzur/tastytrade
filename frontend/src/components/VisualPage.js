@@ -11,6 +11,22 @@ import {
 } from "recharts";
 import { Box, Typography, CircularProgress } from "@mui/material";
 
+const createUTCDate = (year, month, day) => {
+  return new Date(Date.UTC(year, month, day));
+};
+
+const getNextSunday = (date) => {
+  const utcDate = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
+  utcDate.setUTCDate(utcDate.getUTCDate() + ((7 - utcDate.getUTCDay()) % 7));
+  return utcDate;
+};
+
+const formatUTCDate = (date) => {
+  return date.toISOString().split("T")[0];
+};
+
 const VisualPage = () => {
   const [weeklyData, setWeeklyData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,16 +36,54 @@ const VisualPage = () => {
     const fetchAndProcessData = async () => {
       setLoading(true);
       try {
-        // Get data from the last year
-        const endDate = new Date().toISOString().split("T")[0];
-        const startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split("T")[0];
+        // Get data from the last year using UTC dates
+        const now = new Date();
+        const endDate = formatUTCDate(
+          createUTCDate(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate()
+          )
+        );
+        const storedStartDate = localStorage.getItem("accountHistoryStartDate");
+        const startDate = storedStartDate
+          ? formatUTCDate(new Date(storedStartDate))
+          : formatUTCDate(
+              createUTCDate(
+                now.getUTCFullYear(),
+                now.getUTCMonth() - 2,
+                now.getUTCDate()
+              )
+            );
 
         const response = await fetch(
           `${process.env.REACT_APP_API_URL}/api/account-history?start-date=${startDate}&end-date=${endDate}`
         );
         const data = await response.json();
+
+        // Generate all Sundays between start and end date using UTC
+        const allWeeks = {};
+        let currentDate = new Date(startDate);
+        const endDateObj = createUTCDate(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate()
+        );
+
+        // Move both dates to their next Sundays
+        currentDate = getNextSunday(currentDate);
+        const endDateSunday = getNextSunday(endDateObj);
+
+        // Generate a key for every Sunday using UTC
+        while (currentDate <= endDateSunday) {
+          const weekKey = formatUTCDate(currentDate);
+          allWeeks[weekKey] = {
+            week: weekKey,
+            totalValue: 0,
+            transactionCount: 0,
+          };
+          currentDate.setUTCDate(currentDate.getUTCDate() + 7); // Move to next Sunday
+        }
 
         // Process and aggregate data by week
         const weeklyAggregated = data.reduce((acc, transaction) => {
@@ -37,18 +91,8 @@ const VisualPage = () => {
             transaction["instrument-type"]?.toLowerCase().includes("option")
           ) {
             const date = new Date(transaction["executed-at"]);
-            // Get the Sunday of the week (next Sunday if it's currently Sunday)
-            const sunday = new Date(date);
-            sunday.setDate(date.getDate() + ((7 - date.getDay()) % 7));
-            const weekKey = sunday.toISOString().split("T")[0];
-
-            if (!acc[weekKey]) {
-              acc[weekKey] = {
-                week: weekKey,
-                totalValue: 0,
-                transactionCount: 0,
-              };
-            }
+            const sunday = getNextSunday(date);
+            const weekKey = formatUTCDate(sunday);
 
             const numericValue = parseFloat(transaction.value);
             const value =
@@ -60,7 +104,7 @@ const VisualPage = () => {
             acc[weekKey].transactionCount += 1;
           }
           return acc;
-        }, {});
+        }, allWeeks);
 
         // Convert to array and sort by date
         const sortedData = Object.values(weeklyAggregated).sort(
@@ -127,21 +171,16 @@ const VisualPage = () => {
               textAnchor="end"
               height={60}
               tickFormatter={(date) => {
-                return new Date(date).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                });
+                const utcDate = new Date(date);
+                return `${utcDate.getUTCMonth() + 1}/${utcDate.getUTCDate()}`;
               }}
             />
             <YAxis />
             <Tooltip
               formatter={(value) => `$${value.toFixed(2)}`}
               labelFormatter={(date) => {
-                return new Date(date).toLocaleDateString(undefined, {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                });
+                const utcDate = new Date(date);
+                return formatUTCDate(utcDate);
               }}
             />
             <Legend />
