@@ -111,6 +111,15 @@ const VisualPage = () => {
           (a, b) => new Date(a.week) - new Date(b.week)
         );
 
+        // Calculate moving average for each week (4-week window)
+        const windowSize = 4;
+        sortedData.forEach((week, index) => {
+          const startIndex = Math.max(0, index - windowSize + 1);
+          const window = sortedData.slice(startIndex, index + 1);
+          const sum = window.reduce((acc, curr) => acc + curr.totalValue, 0);
+          week.averageValue = sum / window.length;
+        });
+
         setWeeklyData(sortedData);
       } catch (err) {
         setError(err.message);
@@ -190,6 +199,14 @@ const VisualPage = () => {
               name="Weekly P/L"
               stroke="#8884d8"
               dot={true}
+            />
+            <Line
+              type="monotone"
+              dataKey="averageValue"
+              name="4-Week Average"
+              stroke="#82ca9d"
+              dot={false}
+              strokeDasharray="3 3"
             />
           </LineChart>
         </ResponsiveContainer>
