@@ -269,7 +269,7 @@ async function getAccountHistory(sessionToken, startDate, endDate) {
 
     let response = await makeRequest(
       "GET",
-      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-date=${startDate}&end-date=${endDate}`,
+      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-at=${startDate}&end-date=${endDate}`,
       sessionToken
     );
 
@@ -285,7 +285,7 @@ async function getAccountHistory(sessionToken, startDate, endDate) {
       const nextPageOffset = response.pagination["page-offset"] + 1;
       response = await makeRequest(
         "GET",
-        `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-date=${startDate}&end-date=${endDate}&page-offset=${nextPageOffset}`,
+        `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-at=${startDate}&end-date=${endDate}&page-offset=${nextPageOffset}`,
         sessionToken
       );
       if (!response?.data) {

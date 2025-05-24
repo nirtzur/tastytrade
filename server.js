@@ -1,12 +1,96 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const mysql = require("mysql2/promise");
 const {
   initializeTastytrade,
   processSymbols,
   getAccountHistory,
   getPositions,
 } = require("./Analyze/tastytrade");
+
+// Create MySQL connection pool
+const pool = mysql.createPool({
+  host: "localhost",
+  user: "nir",
+  password: "tzur",
+  database: "tastytrade",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
+
+// Keep track of last sync time
+let lastSyncTime = null;
+
+async function getLastSyncTime() {
+  const connection = await pool.getConnection();
+  try {
+    const [rows] = await connection.query(
+      "SELECT MAX(executed_at) as last_sync FROM transactions_history"
+    );
+    return rows[0]?.last_sync || new Date("2024-01-01"); // Default to start of 2024 if no data
+  } finally {
+    connection.release();
+  }
+}
+
+async function syncTransactions() {
+  try {
+    const lastSync = await getLastSyncTime();
+    const now = new Date();
+
+    logInfo("Syncing transactions since:", lastSync);
+
+    const formatDate = (date) => date.toISOString().split(".")[0];
+    const transactions = await getAccountHistory(
+      tastytradeSessionToken,
+      formatDate(lastSync),
+      formatDate(now)
+    );
+
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      logInfo("No new transactions to sync");
+      return;
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      for (const tx of transactions) {
+        await connection.query(
+          `INSERT IGNORE INTO transactions_history 
+           (transaction_id, executed_at, transaction_type, action, symbol, quantity, price, value, value_effect, description)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            tx.id,
+            new Date(tx["executed-at"]),
+            tx["transaction-type"],
+            tx.action,
+            tx.symbol,
+            tx.quantity,
+            tx.price,
+            Math.abs(tx.value),
+            tx["value-effect"],
+            tx.description,
+          ]
+        );
+      }
+
+      await connection.commit();
+      logInfo(`Synced ${transactions.length} transactions`);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    logError("Error syncing transactions:", error);
+    throw error;
+  }
+}
 
 const app = express();
 app.use(cors());
@@ -109,6 +193,10 @@ async function initializeServer() {
 
     tastytradeSessionToken = await initializeTastytrade();
     logInfo("Tastytrade connection established successfully");
+
+    // Sync transactions after successful connection
+    await syncTransactions();
+
     retryCount = 0; // Reset counter on success
     return true;
   } catch (error) {
@@ -176,14 +264,31 @@ app.get("/api/account-history", ensureSession, async (req, res) => {
       });
     }
 
-    logInfo("Fetching account history");
-    const filteredHistory = await getAccountHistory(
-      tastytradeSessionToken,
-      startDate,
-      endDate
-    );
-    logInfo("Successfully fetched account history");
-    res.json(filteredHistory);
+    // Get transactions from database
+    const connection = await pool.getConnection();
+    try {
+      const [rows] = await connection.query(
+        `SELECT 
+          executed_at as 'executed-at',
+          transaction_type as 'transaction-type',
+          action,
+          symbol,
+          quantity,
+          price,
+          value,
+          value_effect as 'value-effect',
+          description
+         FROM transactions_history
+         WHERE executed_at BETWEEN ? AND ?
+         ORDER BY executed_at DESC`,
+        [startDate, endDate]
+      );
+
+      logInfo("Successfully fetched account history from database");
+      res.json(rows);
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     logError("Error in /api/account-history:", {
       error: error.message,
