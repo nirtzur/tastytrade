@@ -4,10 +4,12 @@ const path = require("path");
 const mysql = require("mysql2/promise");
 const {
   initializeTastytrade,
-  processSymbols,
   getAccountHistory,
   getPositions,
 } = require("./Analyze/tastytrade");
+const { processSymbols } = require("./Analyze/index");
+const { getSP500Symbols } = require("./Analyze/sp500");
+const { getSectorETFs } = require("./Analyze/etfs");
 
 // Create MySQL connection pool
 const pool = mysql.createPool({
@@ -308,8 +310,28 @@ app.get("/api/account-history", ensureSession, async (req, res) => {
 app.get("/api/trading-data", ensureSession, async (req, res) => {
   try {
     logInfo("Fetching trading data");
-    const data = await processSymbols();
-    res.json(data);
+    // Get symbols
+    const sp500Symbols = await getSP500Symbols();
+    const etfSymbols = getSectorETFs();
+    const symbolsToProcess = [...sp500Symbols, ...etfSymbols];
+
+    logInfo(`Processing ${symbolsToProcess.length} symbols...`);
+
+    // First run analysis
+    await processSymbols(symbolsToProcess, tastytradeSessionToken);
+
+    // Then fetch latest results from database
+    const connection = await pool.getConnection();
+    try {
+      const [rows] = await connection.query(
+        `SELECT * FROM analysis_results 
+         WHERE analyzed_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+         ORDER BY analyzed_at DESC`
+      );
+      res.json(rows);
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     logError("Error fetching trading data:", error);
     res.status(500).json({
@@ -328,6 +350,27 @@ app.get("/api/positions", ensureSession, async (req, res) => {
     logError("Error fetching positions:", error);
     res.status(500).json({
       error: "Failed to fetch positions",
+      message: error.message,
+    });
+  }
+});
+
+app.post("/api/trading-data/refresh", ensureSession, async (req, res) => {
+  try {
+    logInfo("Starting analysis refresh");
+    // Get symbols
+    const sp500Symbols = await getSP500Symbols();
+    const etfSymbols = getSectorETFs();
+    const symbolsToProcess = [...sp500Symbols, ...etfSymbols];
+
+    logInfo(`Processing ${symbolsToProcess.length} symbols...`);
+    await processSymbols(symbolsToProcess, tastytradeSessionToken);
+
+    res.json({ success: true, message: "Analysis refresh complete" });
+  } catch (error) {
+    logError("Error refreshing analysis:", error);
+    res.status(500).json({
+      error: "Failed to refresh analysis",
       message: error.message,
     });
   }

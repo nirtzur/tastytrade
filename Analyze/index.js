@@ -1,5 +1,6 @@
 const axios = require("axios");
 const chalk = require("chalk");
+const mysql = require("mysql2/promise");
 const {
   initializeTastytrade,
   getQuote,
@@ -17,6 +18,17 @@ const MIN_STOCK_PRICE = parseFloat(process.env.MIN_STOCK_PRICE) || 30;
 const MAX_STOCK_SPREAD = parseFloat(process.env.MAX_STOCK_SPREAD) || 15;
 const MIN_MID_PERCENT = parseFloat(process.env.MIN_MID_PERCENT) || 3;
 const DAYS_TO_EXPIRATION = parseInt(process.env.DAYS_TO_EXPIRATION) || 10;
+
+// Create MySQL connection pool
+const pool = mysql.createPool({
+  host: "localhost",
+  user: "nir",
+  password: "tzur",
+  database: "tastytrade",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
 
 // Add function to get days to earnings date
 async function getDaysToEarnings(symbol) {
@@ -110,22 +122,134 @@ async function processSymbols(symbols, token) {
   for (const symbol of symbols) {
     const data = await fetchSymbolData(symbol, token);
     if (data) {
-      results.push(data);
-      // Show output immediately after processing
       const currentPrice = parseFloat(data.quote?.last) || null;
+      const stockBid = parseFloat(data.quote?.bid) || null;
+      const stockAsk = parseFloat(data.quote?.ask) || null;
+      const stockSpread = stockAsk && stockBid ? stockAsk - stockBid : null;
       const strikePrice = parseFloat(data.options?.strike_price) || null;
-      const bidPrice = parseFloat(data.options?.bid) || null;
-      const askPrice = parseFloat(data.options?.ask) || null;
-      const midPrice = bidPrice && askPrice ? (bidPrice + askPrice) / 2 : null;
-      const midPercent =
-        strikePrice && midPrice
-          ? ((midPrice / strikePrice) * 100).toFixed(2)
+      const optionBid = parseFloat(data.options?.bid) || null;
+      const optionAsk = parseFloat(data.options?.ask) || null;
+      const optionMidPrice =
+        optionBid && optionAsk ? (optionBid + optionAsk) / 2 : null;
+      const optionMidPercent =
+        strikePrice && optionMidPrice
+          ? (optionMidPrice / strikePrice) * 100
           : null;
-      const optionExpirationDate = new Date(data.options["expiration-date"]);
+      const optionExpirationDate = data.options["expiration-date"]
+        ? new Date(data.options["expiration-date"])
+        : null;
 
-      // Only show symbols with:
-      // - price above MIN_STOCK_PRICE
-      // - expiration within DAYS_TO_EXPIRATION
+      // Prepare analysis result object
+      const analysisResult = {
+        symbol,
+        current_price: currentPrice,
+        stock_bid: stockBid,
+        stock_ask: stockAsk,
+        stock_spread: stockSpread,
+        option_strike_price: strikePrice,
+        option_bid: optionBid,
+        option_ask: optionAsk,
+        option_mid_price: optionMidPrice,
+        option_mid_percent: optionMidPercent,
+        option_expiration_date: optionExpirationDate,
+        status: null,
+        notes: [],
+        days_to_earnings: null,
+      };
+
+      // Add analysis notes and status
+      if (currentPrice && currentPrice > MIN_STOCK_PRICE) {
+        if (optionExpirationDate && optionExpirationDate <= expirationDate) {
+          if (
+            optionMidPercent &&
+            parseFloat(optionMidPercent) > MIN_MID_PERCENT
+          ) {
+            analysisResult.status = "HIGH_MID_PERCENT";
+            analysisResult.notes.push(
+              `Mid price ${optionMidPercent.toFixed(
+                2
+              )}% of strike exceeds minimum ${MIN_MID_PERCENT}%`
+            );
+
+            // Get days to earnings
+            const daysToEarnings = await getDaysToEarnings(symbol);
+            if (daysToEarnings) {
+              analysisResult.days_to_earnings = daysToEarnings;
+              analysisResult.notes.push(
+                `${daysToEarnings} days until earnings`
+              );
+            }
+          } else {
+            analysisResult.status = "LOW_MID_PERCENT";
+            if (optionMidPercent) {
+              analysisResult.notes.push(
+                `Mid price ${optionMidPercent.toFixed(
+                  2
+                )}% of strike below minimum ${MIN_MID_PERCENT}%`
+              );
+            }
+          }
+        } else {
+          analysisResult.status = "EXPIRATION_TOO_FAR";
+          analysisResult.notes.push("Option expiration beyond target window");
+        }
+      } else {
+        analysisResult.status = "LOW_STOCK_PRICE";
+        analysisResult.notes.push(
+          `Stock price $${currentPrice} below minimum $${MIN_STOCK_PRICE}`
+        );
+      }
+
+      // Join notes into a single string
+      const notes = analysisResult.notes.join("; ");
+
+      // Store in database immediately
+      const connection = await pool.getConnection();
+      try {
+        await connection.query(
+          `INSERT INTO analysis_results (
+            symbol,
+            current_price,
+            stock_bid,
+            stock_ask,
+            stock_spread,
+            option_strike_price,
+            option_bid,
+            option_ask,
+            option_mid_price,
+            option_mid_percent,
+            option_expiration_date,
+            days_to_earnings,
+            status,
+            notes
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            symbol,
+            currentPrice,
+            stockBid,
+            stockAsk,
+            stockSpread,
+            strikePrice,
+            optionBid,
+            optionAsk,
+            optionMidPrice,
+            optionMidPercent,
+            optionExpirationDate,
+            analysisResult.days_to_earnings,
+            analysisResult.status,
+            notes,
+          ]
+        );
+      } catch (error) {
+        console.error(`Error storing analysis for ${symbol}:`, error);
+        throw error;
+      } finally {
+        connection.release();
+      }
+
+      results.push(analysisResult);
+
+      // Console output for immediate feedback
       if (
         currentPrice &&
         currentPrice > MIN_STOCK_PRICE &&
@@ -133,20 +257,21 @@ async function processSymbols(symbols, token) {
       ) {
         const output = `${symbol}: Price: $${currentPrice?.toFixed(
           2
-        )} | Strike: $${strikePrice?.toFixed(2)} | Mid: $${midPrice?.toFixed(
+        )} | Strike: $${strikePrice?.toFixed(
           2
-        )} (${midPercent}% of strike) | Exp: ${
-          optionExpirationDate.toISOString().split("T")[0]
+        )} | Mid: $${optionMidPrice?.toFixed(2)} (${optionMidPercent?.toFixed(
+          2
+        )}% of strike) | Exp: ${
+          optionExpirationDate?.toISOString().split("T")[0]
         }`;
 
-        // Highlight lines where mid price is more than MIN_MID_PERCENT of strike
-        if (midPercent && parseFloat(midPercent) > MIN_MID_PERCENT) {
-          // Get days to earnings date
-          const daysToEarnings = await getDaysToEarnings(symbol);
-          const earningsOutput = daysToEarnings
-            ? ` | Days to Earnings: ${daysToEarnings}`
+        if (
+          optionMidPercent &&
+          parseFloat(optionMidPercent) > MIN_MID_PERCENT
+        ) {
+          const earningsOutput = analysisResult.days_to_earnings
+            ? ` | Days to Earnings: ${analysisResult.days_to_earnings}`
             : "";
-
           console.log(chalk.yellow(output + earningsOutput));
         } else {
           console.log(chalk.cyan(output));
