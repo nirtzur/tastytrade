@@ -10,6 +10,10 @@ import {
   Select,
   MenuItem,
 } from "@mui/material";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
 
 const AnalysisTable = () => {
   const [rawData, setRawData] = useState([]);
@@ -18,22 +22,34 @@ const AnalysisTable = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState("hide_low");
+  const [selectedDate, setSelectedDate] = useState(dayjs());
   const [excludedStatuses] = useState({
     LOW_STOCK_PRICE: true,
     LOW_MID_PERCENT: true,
   });
 
-  const applyStatusFilters = useCallback(
+  const applyFilters = useCallback(
     (data) => {
-      if (selectedStatuses === "all") {
-        return data;
-      } else if (selectedStatuses === "hide_low") {
-        return data.filter((row) => !excludedStatuses[row.Status]);
+      // First apply status filter
+      let filtered = data;
+      if (selectedStatuses !== "all") {
+        if (selectedStatuses === "hide_low") {
+          filtered = data.filter((row) => !excludedStatuses[row.Status]);
+        } else {
+          filtered = data.filter((row) => row.Status === selectedStatuses);
+        }
       }
-      // Filter for specific status
-      return data.filter((row) => row.Status === selectedStatuses);
+
+      // Then apply date filter
+      return filtered.filter((row) => {
+        const analyzedDate = dayjs(row["Analyzed At"]);
+        return (
+          analyzedDate.format("YYYY-MM-DD") ===
+          selectedDate.format("YYYY-MM-DD")
+        );
+      });
     },
-    [excludedStatuses, selectedStatuses]
+    [excludedStatuses, selectedStatuses, selectedDate]
   );
 
   const fetchAnalysisData = useCallback(async () => {
@@ -63,7 +79,7 @@ const AnalysisTable = () => {
           "Analyzed At": new Date(analysis.analyzed_at).toLocaleString(),
         }));
         setRawData(transformedData);
-        setFilteredData(applyStatusFilters(transformedData));
+        setFilteredData(applyFilters(transformedData));
       } else {
         throw new Error("Invalid analysis data format");
       }
@@ -73,7 +89,7 @@ const AnalysisTable = () => {
     } finally {
       setLoading(false);
     }
-  }, [applyStatusFilters]);
+  }, [applyFilters]);
 
   const handleRefresh = async () => {
     try {
@@ -98,9 +114,14 @@ const AnalysisTable = () => {
     }
   };
 
+  const handleDateChange = (newDate) => {
+    setSelectedDate(newDate);
+    setFilteredData(applyFilters(rawData));
+  };
+
   const handleStatusChange = (event) => {
     setSelectedStatuses(event.target.value);
-    setFilteredData(applyStatusFilters(rawData));
+    setFilteredData(applyFilters(rawData));
   };
 
   useEffect(() => {
@@ -108,8 +129,8 @@ const AnalysisTable = () => {
   }, [fetchAnalysisData]);
 
   useEffect(() => {
-    setFilteredData(applyStatusFilters(rawData));
-  }, [rawData, applyStatusFilters]);
+    setFilteredData(applyFilters(rawData));
+  }, [rawData, applyFilters]);
 
   if (loading) {
     return (
@@ -164,7 +185,16 @@ const AnalysisTable = () => {
       >
         <Typography variant="h6">Trading Analysis</Typography>
         <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-          <FormControl sx={{ minWidth: 200 }}>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <DatePicker
+              label="Analysis Date"
+              value={selectedDate}
+              onChange={handleDateChange}
+              slotProps={{ textField: { size: "small" } }}
+              sx={{ minWidth: 200 }}
+            />
+          </LocalizationProvider>
+          <FormControl sx={{ minWidth: 200 }} size="small">
             <InputLabel id="status-filter-label">Filter Status</InputLabel>
             <Select
               labelId="status-filter-label"
