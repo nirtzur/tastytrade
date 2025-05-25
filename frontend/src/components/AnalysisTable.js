@@ -1,14 +1,42 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import DataTable from "./DataTable";
-import { Box, Typography, CircularProgress, Button } from "@mui/material";
+import {
+  Box,
+  Typography,
+  CircularProgress,
+  Button,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+} from "@mui/material";
 
 const AnalysisTable = () => {
-  const [analysisData, setAnalysisData] = useState([]);
+  const [rawData, setRawData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(false);
+  const [selectedStatuses, setSelectedStatuses] = useState("hide_low");
+  const [excludedStatuses] = useState({
+    LOW_STOCK_PRICE: true,
+    LOW_MID_PERCENT: true,
+  });
 
-  const fetchAnalysisData = async () => {
+  const applyStatusFilters = useCallback(
+    (data) => {
+      if (selectedStatuses === "all") {
+        return data;
+      } else if (selectedStatuses === "hide_low") {
+        return data.filter((row) => !excludedStatuses[row.Status]);
+      }
+      // Filter for specific status
+      return data.filter((row) => row.Status === selectedStatuses);
+    },
+    [excludedStatuses, selectedStatuses]
+  );
+
+  const fetchAnalysisData = useCallback(async () => {
     try {
       const response = await fetch(
         `${process.env.REACT_APP_API_URL}/api/trading-data`
@@ -34,7 +62,8 @@ const AnalysisTable = () => {
           Notes: analysis.notes,
           "Analyzed At": new Date(analysis.analyzed_at).toLocaleString(),
         }));
-        setAnalysisData(transformedData);
+        setRawData(transformedData);
+        setFilteredData(applyStatusFilters(transformedData));
       } else {
         throw new Error("Invalid analysis data format");
       }
@@ -44,14 +73,13 @@ const AnalysisTable = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [applyStatusFilters]);
 
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
       setError(null);
 
-      // Start the analysis refresh
       const refreshResponse = await fetch(
         `${process.env.REACT_APP_API_URL}/api/trading-data/refresh`,
         { method: "POST" }
@@ -61,7 +89,6 @@ const AnalysisTable = () => {
         throw new Error("Failed to refresh analysis");
       }
 
-      // Wait for analysis to complete and get results
       await fetchAnalysisData();
     } catch (err) {
       setError("Failed to refresh analysis data");
@@ -71,9 +98,18 @@ const AnalysisTable = () => {
     }
   };
 
+  const handleStatusChange = (event) => {
+    setSelectedStatuses(event.target.value);
+    setFilteredData(applyStatusFilters(rawData));
+  };
+
   useEffect(() => {
     fetchAnalysisData();
-  }, []);
+  }, [fetchAnalysisData]);
+
+  useEffect(() => {
+    setFilteredData(applyStatusFilters(rawData));
+  }, [rawData, applyStatusFilters]);
 
   if (loading) {
     return (
@@ -123,23 +159,43 @@ const AnalysisTable = () => {
           justifyContent: "space-between",
           alignItems: "center",
           mb: 2,
+          gap: 2,
         }}
       >
         <Typography variant="h6">Trading Analysis</Typography>
-        <Button
-          variant="contained"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          sx={{ minWidth: 120 }}
-        >
-          {refreshing ? (
-            <CircularProgress size={24} color="inherit" />
-          ) : (
-            "Refresh Data"
-          )}
-        </Button>
+        <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+          <FormControl sx={{ minWidth: 200 }}>
+            <InputLabel id="status-filter-label">Filter Status</InputLabel>
+            <Select
+              labelId="status-filter-label"
+              id="status-filter"
+              value={selectedStatuses}
+              label="Filter Status"
+              onChange={handleStatusChange}
+            >
+              <MenuItem value="all">Show All</MenuItem>
+              <MenuItem value="hide_low">Hide Low Status</MenuItem>
+              <MenuItem value="READY">Ready Only</MenuItem>
+              <MenuItem value="ANALYZING">Analyzing Only</MenuItem>
+              <MenuItem value="LOW_STOCK_PRICE">Low Stock Price Only</MenuItem>
+              <MenuItem value="LOW_MID_PERCENT">Low Mid Percent Only</MenuItem>
+            </Select>
+          </FormControl>
+          <Button
+            variant="contained"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            sx={{ minWidth: 120 }}
+          >
+            {refreshing ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : (
+              "Refresh Data"
+            )}
+          </Button>
+        </Box>
       </Box>
-      <DataTable columns={columns} data={analysisData} />
+      <DataTable columns={columns} data={filteredData} />
     </Box>
   );
 };
