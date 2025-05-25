@@ -1,6 +1,7 @@
 const axios = require("axios");
 const chalk = require("chalk");
 const mysql = require("mysql2/promise");
+const yahooFinance = require("yahoo-finance2").default;
 const {
   initializeTastytrade,
   getQuote,
@@ -33,23 +34,16 @@ const pool = mysql.createPool({
 // Add function to get days to earnings date
 async function getDaysToEarnings(symbol) {
   try {
-    const apiKey = process.env.FINNHUB_API_KEY;
-    if (!apiKey) {
-      throw new Error("Finnhub API key not found in environment variables");
-    }
+    const result = await yahooFinance.quote(symbol, {
+      fields: ["earningsTimestamp"],
+    });
 
-    const response = await axios.get(
-      `https://finnhub.io/api/v1/calendar/earnings?symbol=${symbol}&token=${apiKey}`
-    );
-
-    if (!response?.data?.earningsCalendar?.[0]?.date) {
+    if (!result.earningsTimestamp) {
       return null;
     }
-
-    const earningsDate = new Date(response.data.earningsCalendar[0].date);
     const today = new Date();
     const daysToEarnings = Math.ceil(
-      (earningsDate - today) / (1000 * 60 * 60 * 24)
+      (result.earningsTimestamp - today) / (1000 * 60 * 60 * 24)
     );
 
     return daysToEarnings;
