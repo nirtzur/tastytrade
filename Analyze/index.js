@@ -207,7 +207,7 @@ async function processSymbols(symbols, token) {
       const connection = await pool.getConnection();
       try {
         await connection.query(
-          `INSERT INTO analysis_results (
+          `REPLACE INTO analysis_results (
             symbol,
             current_price,
             stock_bid,

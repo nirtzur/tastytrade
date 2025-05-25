@@ -309,24 +309,17 @@ app.get("/api/account-history", ensureSession, async (req, res) => {
 
 app.get("/api/trading-data", ensureSession, async (req, res) => {
   try {
-    logInfo("Fetching trading data");
-    // Get symbols
-    const sp500Symbols = await getSP500Symbols();
-    const etfSymbols = getSectorETFs();
-    const symbolsToProcess = [...sp500Symbols, ...etfSymbols];
-
-    logInfo(`Processing ${symbolsToProcess.length} symbols...`);
-
-    // First run analysis
-    await processSymbols(symbolsToProcess, tastytradeSessionToken);
-
-    // Then fetch latest results from database
+    logInfo("Fetching trading data from database");
     const connection = await pool.getConnection();
     try {
       const [rows] = await connection.query(
-        `SELECT * FROM analysis_results 
-         WHERE analyzed_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
-         ORDER BY analyzed_at DESC`
+        `SELECT a.* FROM analysis_results a
+         INNER JOIN (
+           SELECT symbol, MAX(analyzed_at) as latest_at
+           FROM analysis_results
+           GROUP BY symbol
+         ) b ON a.symbol = b.symbol AND a.analyzed_at = b.latest_at
+         ORDER BY a.symbol ASC`
       );
       res.json(rows);
     } finally {
