@@ -61,12 +61,13 @@ async function syncTransactions() {
       for (const tx of transactions) {
         await connection.query(
           `INSERT IGNORE INTO transactions_history 
-           (transaction_id, executed_at, transaction_type, action, symbol, quantity, price, value, value_effect, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (transaction_id, executed_at, transaction_type, instrument_type, action, symbol, quantity, price, value, value_effect, description)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             tx.id,
             new Date(tx["executed-at"]),
             tx["transaction-type"],
+            tx["instrument-type"],
             tx.action,
             tx.symbol,
             tx.quantity,
@@ -271,6 +272,7 @@ app.get("/api/account-history", ensureSession, async (req, res) => {
         `SELECT 
           executed_at as 'executed-at',
           transaction_type as 'transaction-type',
+          instrument_type as 'instrument-type',
           action,
           symbol,
           quantity,
