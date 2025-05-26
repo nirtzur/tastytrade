@@ -9,6 +9,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Link,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -52,6 +53,18 @@ const AnalysisTable = () => {
     [excludedStatuses, selectedStatuses, selectedDate]
   );
 
+  const openYahooFinance = (symbol) => {
+    window.open(
+      `https://finance.yahoo.com/chart/${symbol}?period1=${Math.floor(
+        (Date.now() - 180 * 24 * 60 * 60 * 1000) / 1000
+      )}&period2=${Math.floor(
+        Date.now() / 1000
+      )}&interval=1d&includePrePost=true`,
+      "_blank",
+      "width=1200,height=800"
+    );
+  };
+
   const fetchAnalysisData = useCallback(async () => {
     try {
       const response = await fetch(
@@ -64,7 +77,21 @@ const AnalysisTable = () => {
 
       if (Array.isArray(data)) {
         const transformedData = data.map((analysis) => ({
-          Symbol: analysis.symbol,
+          Symbol: (
+            <Link
+              component="button"
+              onClick={() => openYahooFinance(analysis.symbol)}
+              sx={{
+                textDecoration: "none",
+                "&:hover": {
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                },
+              }}
+            >
+              {analysis.symbol}
+            </Link>
+          ),
           "Current Price": `$${analysis.current_price || "N/A"}`,
           "Stock Spread": `$${analysis.stock_spread || "N/A"}`,
           "Strike Price": `$${analysis.option_strike_price || "N/A"}`,
