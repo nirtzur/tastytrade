@@ -10,6 +10,7 @@ import { AppBar, Tabs, Tab, Box } from "@mui/material";
 import AccountHistoryTable from "./components/AccountHistoryTable";
 import VisualPage from "./components/VisualPage";
 import AnalysisTable from "./components/AnalysisTable";
+import ValueOverTime from "./components/ValueOverTime";
 
 function App() {
   const navigate = useNavigate();
@@ -30,6 +31,7 @@ function App() {
         >
           <Tab label="Account History" value="/account-history" />
           <Tab label="Analysis" value="/analysis" />
+          <Tab label="Value Over Time" value="/value" />
           <Tab label="Visual" value="/visual" />
         </Tabs>
       </AppBar>
@@ -41,6 +43,7 @@ function App() {
           />
           <Route path="/account-history" element={<AccountHistoryTable />} />
           <Route path="/analysis" element={<AnalysisTable />} />
+          <Route path="/value" element={<ValueOverTime />} />
           <Route path="/visual" element={<VisualPage />} />
         </Routes>
       </Box>

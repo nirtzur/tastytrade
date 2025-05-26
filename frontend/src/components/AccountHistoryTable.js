@@ -21,7 +21,6 @@ const AccountHistoryTable = () => {
   const [endDate, setEndDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-  const [funding, setFunding] = useState(111000);
   const [positionsTotalValue, setPositionsTotalValue] = useState(0);
 
   useEffect(() => {
@@ -111,16 +110,6 @@ const AccountHistoryTable = () => {
           alignItems: "center",
         }}
       >
-        <TextField
-          label="Funding"
-          type="number"
-          value={funding}
-          onChange={(e) => setFunding(Number(e.target.value))}
-          sx={{ width: 150 }}
-          InputProps={{
-            startAdornment: "$",
-          }}
-        />
         <TextField
           label="Start Date"
           type="date"
