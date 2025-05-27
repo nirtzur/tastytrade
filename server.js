@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const yahooFinance = require("yahoo-finance2").default;
 const {
   initializeTastytrade,
   getAccountHistory,
@@ -334,7 +335,36 @@ app.get("/api/positions", ensureSession, async (req, res) => {
   try {
     logInfo("Fetching positions");
     const positions = await getPositions(tastytradeSessionToken);
-    res.json(positions);
+
+    // Fetch Yahoo Finance prices for all symbols
+    const symbolPrices = await Promise.all(
+      positions.map(async (position) => {
+        try {
+          const quote = await yahooFinance.quote(position.symbol);
+          return {
+            symbol: position.symbol,
+            yahooPrice: quote.regularMarketPrice,
+          };
+        } catch (error) {
+          logError(`Error fetching Yahoo price for ${position.symbol}:`, error);
+          return {
+            symbol: position.symbol,
+            yahooPrice: null,
+          };
+        }
+      })
+    );
+
+    // Add Yahoo prices to positions data
+    const positionsWithYahoo = positions.map((position) => {
+      const yahooData = symbolPrices.find((p) => p.symbol === position.symbol);
+      return {
+        ...position,
+        yahoo_price: yahooData?.yahooPrice || null,
+      };
+    });
+
+    res.json(positionsWithYahoo);
   } catch (error) {
     logError("Error fetching positions:", error);
     res.status(500).json({

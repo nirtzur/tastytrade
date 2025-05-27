@@ -24,8 +24,9 @@ const PositionsTable = ({ onTotalValueChange, onLoadingChange }) => {
             const quantity = parseFloat(position.quantity) || 0;
             const acquisitionPrice =
               parseFloat(position["average-open-price"]) || 0;
+            const yahooPrice = parseFloat(position.yahoo_price) || 0;
 
-            const value = quantity * Math.min(strikePrice, optionPrice);
+            const value = quantity * Math.min(yahooPrice, optionPrice);
             const acquisitionCost = quantity * acquisitionPrice;
             const pnl = value - acquisitionCost;
 
@@ -35,6 +36,7 @@ const PositionsTable = ({ onTotalValueChange, onLoadingChange }) => {
               "Strike Price": strikePrice,
               "Option Price": optionPrice,
               "Acquisition Price": acquisitionPrice,
+              "Yahoo Price": yahooPrice ? yahooPrice.toFixed(2) : "N/A",
               Value: value.toFixed(2),
               "P/L": pnl.toFixed(2),
             };
@@ -80,6 +82,7 @@ const PositionsTable = ({ onTotalValueChange, onLoadingChange }) => {
     "Strike Price",
     "Option Price",
     "Acquisition Price",
+    "Yahoo Price",
     "Value",
     "P/L",
   ];
