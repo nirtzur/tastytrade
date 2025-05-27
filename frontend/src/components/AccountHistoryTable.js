@@ -7,6 +7,7 @@ import {
   FormControlLabel,
   TextField,
   Typography,
+  CircularProgress,
 } from "@mui/material";
 
 const AccountHistoryTable = () => {
@@ -22,9 +23,10 @@ const AccountHistoryTable = () => {
     new Date().toISOString().split("T")[0]
   );
   const [positionsTotalValue, setPositionsTotalValue] = useState(0);
+  const [isPositionsLoading, setIsPositionsLoading] = useState(true);
 
+  // Save startDate to localStorage when it changes
   useEffect(() => {
-    // Store startDate in localStorage whenever it changes
     localStorage.setItem("accountHistoryStartDate", startDate);
   }, [startDate]);
 
@@ -66,7 +68,6 @@ const AccountHistoryTable = () => {
     fetchHistory();
   }, [startDate, endDate]);
 
-  if (loading) return <Typography>Loading...</Typography>;
   if (error) return <Typography color="error">Error: {error}</Typography>;
 
   const columns = [
@@ -135,7 +136,10 @@ const AccountHistoryTable = () => {
         />
       </Box>
 
-      <PositionsTable onTotalValueChange={setPositionsTotalValue} />
+      <PositionsTable
+        onTotalValueChange={setPositionsTotalValue}
+        onLoadingChange={setIsPositionsLoading}
+      />
 
       <Box
         sx={{
@@ -147,7 +151,24 @@ const AccountHistoryTable = () => {
         }}
       >
         <Typography variant="h6">
-          Total Value: ${totalValue.toFixed(2)}
+          Total Value:{" "}
+          {loading || isPositionsLoading ? (
+            <Box
+              component="span"
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 1,
+              }}
+            >
+              <CircularProgress size={20} />
+              <Typography component="span" color="text.secondary">
+                Loading...
+              </Typography>
+            </Box>
+          ) : (
+            `$${totalValue.toFixed(2)}`
+          )}
         </Typography>
       </Box>
 
@@ -155,7 +176,13 @@ const AccountHistoryTable = () => {
         <Typography variant="h6" gutterBottom>
           Transaction History
         </Typography>
-        <DataTable columns={columns} data={displayedHistory} />
+        {loading ? (
+          <Box display="flex" justifyContent="center" p={3}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <DataTable columns={columns} data={displayedHistory} />
+        )}
       </Box>
     </Box>
   );

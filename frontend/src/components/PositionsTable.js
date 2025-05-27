@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import DataTable from "./DataTable";
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, CircularProgress } from "@mui/material";
 
-const PositionsTable = ({ onTotalValueChange }) => {
+const PositionsTable = ({ onTotalValueChange, onLoadingChange }) => {
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -10,6 +10,7 @@ const PositionsTable = ({ onTotalValueChange }) => {
   useEffect(() => {
     const fetchPositions = async () => {
       setLoading(true);
+      onLoadingChange?.(true);
       try {
         const response = await fetch(
           `${process.env.REACT_APP_API_URL}/api/positions`
@@ -56,13 +57,21 @@ const PositionsTable = ({ onTotalValueChange }) => {
         console.error("Error:", err);
       } finally {
         setLoading(false);
+        onLoadingChange?.(false);
       }
     };
 
     fetchPositions();
-  }, [onTotalValueChange]);
+  }, [onTotalValueChange, onLoadingChange]);
 
-  if (loading) return <Typography>Loading positions...</Typography>;
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" p={3}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   if (error) return <Typography color="error">Error: {error}</Typography>;
 
   const columns = [
@@ -74,15 +83,6 @@ const PositionsTable = ({ onTotalValueChange }) => {
     "Value",
     "P/L",
   ];
-
-  const totalValue = positions.reduce(
-    (sum, position) => sum + parseFloat(position.Value),
-    0
-  );
-  const totalPnL = positions.reduce(
-    (sum, position) => sum + parseFloat(position["P/L"]),
-    0
-  );
 
   return (
     <Box sx={{ marginBottom: 3 }}>
