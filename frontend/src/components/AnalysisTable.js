@@ -23,7 +23,7 @@ const AnalysisTable = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState("hide_low");
-  const [selectedDate, setSelectedDate] = useState(dayjs());
+  const [selectedDate, setSelectedDate] = useState(null);
   const [excludedStatuses] = useState({
     LOW_STOCK_PRICE: true,
     LOW_MID_PERCENT: true,
@@ -42,11 +42,11 @@ const AnalysisTable = () => {
       }
 
       // Then apply date filter
+      const filterDate = selectedDate || dayjs();
       return filtered.filter((row) => {
         const analyzedDate = dayjs(row["Analyzed At"]);
         return (
-          analyzedDate.format("YYYY-MM-DD") ===
-          selectedDate.format("YYYY-MM-DD")
+          analyzedDate.format("YYYY-MM-DD") === filterDate.format("YYYY-MM-DD")
         );
       });
     },
@@ -104,7 +104,20 @@ const AnalysisTable = () => {
           Status: analysis.status,
           Notes: analysis.notes,
           "Analyzed At": new Date(analysis.analyzed_at).toLocaleString(),
+          analyzed_at: analysis.analyzed_at, // Keep original date for sorting
         }));
+
+        // Find the latest date
+        const latestDate = transformedData.reduce((latest, current) => {
+          const currentDate = dayjs(current.analyzed_at);
+          return latest.isAfter(currentDate) ? latest : currentDate;
+        }, dayjs(transformedData[0]?.analyzed_at));
+
+        // Set the initial date only if it hasn't been set yet
+        if (!selectedDate) {
+          setSelectedDate(latestDate);
+        }
+
         setRawData(transformedData);
         setFilteredData(applyFilters(transformedData));
       } else {
@@ -116,7 +129,7 @@ const AnalysisTable = () => {
     } finally {
       setLoading(false);
     }
-  }, [applyFilters]);
+  }, [applyFilters, selectedDate]);
 
   const handleRefresh = async () => {
     try {
