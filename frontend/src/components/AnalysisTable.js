@@ -208,7 +208,6 @@ const AnalysisTable = () => {
     "Expiration",
     "Days to Earnings",
     "Status",
-    "Notes",
     "Analyzed At",
   ];
 

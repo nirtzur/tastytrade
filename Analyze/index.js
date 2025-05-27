@@ -110,7 +110,7 @@ async function fetchSymbolData(symbol, token) {
 
 async function storeAnalysisResult(result) {
   try {
-    await AnalysisResult.create({
+    await AnalysisResult.upsert({
       symbol: result.symbol,
       current_price: result.current_price,
       stock_bid: result.stock_bid,
