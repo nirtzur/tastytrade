@@ -11,6 +11,7 @@ const {
 const { getSP500Symbols } = require("./sp500");
 const { getSectorETFs } = require("./etfs");
 const sleep = require("./utils/sleep");
+const AnalysisResult = require("../models/AnalysisResult");
 
 require("dotenv").config();
 
@@ -107,6 +108,31 @@ async function fetchSymbolData(symbol, token) {
   }
 }
 
+async function storeAnalysisResult(result) {
+  try {
+    await AnalysisResult.create({
+      symbol: result.symbol,
+      current_price: result.current_price,
+      stock_bid: result.stock_bid,
+      stock_ask: result.stock_ask,
+      stock_spread: result.stock_spread,
+      option_strike_price: result.option_strike_price,
+      option_bid: result.option_bid,
+      option_ask: result.option_ask,
+      option_mid_price: result.option_mid_price,
+      option_mid_percent: result.option_mid_percent,
+      option_expiration_date: result.option_expiration_date,
+      days_to_earnings: result.days_to_earnings,
+      status: result.status,
+      notes: result.notes.join("; "),
+      analyzed_at: new Date(),
+    });
+  } catch (error) {
+    console.error(`Error storing analysis for ${result.symbol}:`, error);
+    throw error;
+  }
+}
+
 async function processSymbols(symbols, token) {
   const results = [];
   const today = new Date();
@@ -198,48 +224,7 @@ async function processSymbols(symbols, token) {
       const notes = analysisResult.notes.join("; ");
 
       // Store in database immediately
-      const connection = await pool.getConnection();
-      try {
-        await connection.query(
-          `REPLACE INTO analysis_results (
-            symbol,
-            current_price,
-            stock_bid,
-            stock_ask,
-            stock_spread,
-            option_strike_price,
-            option_bid,
-            option_ask,
-            option_mid_price,
-            option_mid_percent,
-            option_expiration_date,
-            days_to_earnings,
-            status,
-            notes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            symbol,
-            currentPrice,
-            stockBid,
-            stockAsk,
-            stockSpread,
-            strikePrice,
-            optionBid,
-            optionAsk,
-            optionMidPrice,
-            optionMidPercent,
-            optionExpirationDate,
-            analysisResult.days_to_earnings,
-            analysisResult.status,
-            notes,
-          ]
-        );
-      } catch (error) {
-        console.error(`Error storing analysis for ${symbol}:`, error);
-        throw error;
-      } finally {
-        connection.release();
-      }
+      await storeAnalysisResult(analysisResult);
 
       results.push(analysisResult);
 

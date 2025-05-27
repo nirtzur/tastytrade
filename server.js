@@ -1,7 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const mysql = require("mysql2/promise");
 const {
   initializeTastytrade,
   getAccountHistory,
@@ -10,30 +9,23 @@ const {
 const { processSymbols } = require("./Analyze/index");
 const { getSP500Symbols } = require("./Analyze/sp500");
 const { getSectorETFs } = require("./Analyze/etfs");
-
-// Create MySQL connection pool
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "nir",
-  password: "tzur",
-  database: "tastytrade",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+const sequelize = require("./models");
+const TransactionHistory = require("./models/TransactionHistory");
+const AnalysisResult = require("./models/AnalysisResult");
 
 // Keep track of last sync time
 let lastSyncTime = null;
 
 async function getLastSyncTime() {
-  const connection = await pool.getConnection();
   try {
-    const [rows] = await connection.query(
-      "SELECT MAX(executed_at) as last_sync FROM transactions_history"
-    );
-    return rows[0]?.last_sync || new Date("2024-01-01"); // Default to start of 2024 if no data
-  } finally {
-    connection.release();
+    const lastTransaction = await TransactionHistory.findOne({
+      order: [["executed_at", "DESC"]],
+      attributes: ["executed_at"],
+    });
+    return lastTransaction?.executed_at || new Date("2024-01-01");
+  } catch (error) {
+    console.error("Error getting last sync time:", error);
+    return new Date("2024-01-01");
   }
 }
 
@@ -56,39 +48,37 @@ async function syncTransactions() {
       return;
     }
 
-    const connection = await pool.getConnection();
-    try {
-      await connection.beginTransaction();
-
-      for (const tx of transactions) {
-        await connection.query(
-          `INSERT IGNORE INTO transactions_history 
-           (transaction_id, executed_at, transaction_type, instrument_type, action, symbol, quantity, price, value, value_effect, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            tx.id,
-            new Date(tx["executed-at"]),
-            tx["transaction-type"],
-            tx["instrument-type"],
-            tx.action,
-            tx.symbol,
-            tx.quantity,
-            tx.price,
-            Math.abs(tx.value),
-            tx["value-effect"],
-            tx.description,
-          ]
-        );
+    // Use Sequelize's bulkCreate with updateOnDuplicate
+    await TransactionHistory.bulkCreate(
+      transactions.map((tx) => ({
+        transaction_id: tx.id,
+        executed_at: new Date(tx["executed-at"]),
+        transaction_type: tx["transaction-type"],
+        instrument_type: tx["instrument-type"],
+        action: tx.action,
+        symbol: tx.symbol,
+        quantity: tx.quantity,
+        price: tx.price,
+        value: Math.abs(tx.value),
+        value_effect: tx["value-effect"],
+        description: tx.description,
+      })),
+      {
+        updateOnDuplicate: [
+          "transaction_type",
+          "instrument_type",
+          "action",
+          "symbol",
+          "quantity",
+          "price",
+          "value",
+          "value_effect",
+          "description",
+        ],
       }
+    );
 
-      await connection.commit();
-      logInfo(`Synced ${transactions.length} transactions`);
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
+    logInfo(`Synced ${transactions.length} transactions`);
   } catch (error) {
     logError("Error syncing transactions:", error);
     throw error;
@@ -267,38 +257,34 @@ app.get("/api/account-history", ensureSession, async (req, res) => {
       });
     }
 
-    // Get transactions from database
-    const connection = await pool.getConnection();
-    try {
-      const [rows] = await connection.query(
-        `SELECT 
-          executed_at as 'executed-at',
-          transaction_type as 'transaction-type',
-          instrument_type as 'instrument-type',
-          action,
-          symbol,
-          quantity,
-          price,
-          value,
-          value_effect as 'value-effect',
-          description
-         FROM transactions_history
-         WHERE executed_at BETWEEN ? AND ?
-         ORDER BY executed_at DESC`,
-        [startDate, endDate]
-      );
-
-      logInfo("Successfully fetched account history from database");
-      res.json(rows);
-    } finally {
-      connection.release();
-    }
-  } catch (error) {
-    logError("Error in /api/account-history:", {
-      error: error.message,
-      stack: DEBUG ? error.stack : undefined,
+    const transactions = await TransactionHistory.findAll({
+      where: {
+        executed_at: {
+          [sequelize.Sequelize.Op.between]: [startDate, endDate],
+        },
+      },
+      order: [["executed_at", "DESC"]],
+      raw: true,
     });
 
+    // Transform to match expected format
+    const transformedData = transactions.map((tx) => ({
+      "executed-at": tx.executed_at,
+      "transaction-type": tx.transaction_type,
+      "instrument-type": tx.instrument_type,
+      action: tx.action,
+      symbol: tx.symbol,
+      quantity: tx.quantity,
+      price: tx.price,
+      value: tx.value,
+      "value-effect": tx.value_effect,
+      description: tx.description,
+    }));
+
+    logInfo("Successfully fetched account history");
+    res.json(transformedData);
+  } catch (error) {
+    logError("Error in /api/account-history:", error);
     res.status(500).json({
       error: "Failed to fetch account history",
       message: error.message,
@@ -310,21 +296,31 @@ app.get("/api/account-history", ensureSession, async (req, res) => {
 app.get("/api/trading-data", ensureSession, async (req, res) => {
   try {
     logInfo("Fetching trading data from database");
-    const connection = await pool.getConnection();
-    try {
-      const [rows] = await connection.query(
-        `SELECT a.* FROM analysis_results a
-         INNER JOIN (
-           SELECT symbol, MAX(analyzed_at) as latest_at
-           FROM analysis_results
-           GROUP BY symbol
-         ) b ON a.symbol = b.symbol AND a.analyzed_at = b.latest_at
-         ORDER BY a.symbol ASC`
-      );
-      res.json(rows);
-    } finally {
-      connection.release();
-    }
+
+    const latestAnalyses = await AnalysisResult.findAll({
+      attributes: [
+        "symbol",
+        [
+          sequelize.Sequelize.fn("MAX", sequelize.Sequelize.col("analyzed_at")),
+          "latest_at",
+        ],
+      ],
+      group: ["symbol"],
+    });
+
+    const results = await Promise.all(
+      latestAnalyses.map((analysis) =>
+        AnalysisResult.findOne({
+          where: {
+            symbol: analysis.symbol,
+            analyzed_at: analysis.get("latest_at"),
+          },
+          raw: true,
+        })
+      )
+    );
+
+    res.json(results);
   } catch (error) {
     logError("Error fetching trading data:", error);
     res.status(500).json({
@@ -399,3 +395,13 @@ process.on("SIGTERM", () => {
     logInfo("HTTP server closed");
   });
 });
+
+// Initialize database connection when server starts
+sequelize
+  .authenticate()
+  .then(() => {
+    logInfo("Database connection established successfully");
+  })
+  .catch((error) => {
+    logError("Unable to connect to the database:", error);
+  });
