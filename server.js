@@ -258,10 +258,14 @@ app.get("/api/account-history", ensureSession, async (req, res) => {
       });
     }
 
+    // Make end date inclusive by extending it to the end of the day
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
     const transactions = await TransactionHistory.findAll({
       where: {
         executed_at: {
-          [sequelize.Sequelize.Op.between]: [startDate, endDate],
+          [sequelize.Sequelize.Op.between]: [startDate, endOfDay],
         },
       },
       order: [["executed_at", "DESC"]],
@@ -390,6 +394,20 @@ app.post("/api/trading-data/refresh", ensureSession, async (req, res) => {
     logError("Error refreshing analysis:", error);
     res.status(500).json({
       error: "Failed to refresh analysis",
+      message: error.message,
+    });
+  }
+});
+
+app.post("/api/account-history/sync", ensureSession, async (req, res) => {
+  try {
+    logInfo("Starting manual transaction sync");
+    await syncTransactions();
+    res.json({ success: true, message: "Transaction sync complete" });
+  } catch (error) {
+    logError("Error syncing transactions:", error);
+    res.status(500).json({
+      error: "Failed to sync transactions",
       message: error.message,
     });
   }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import DataTable from "./DataTable";
 import PositionsTable from "./PositionsTable";
 import {
@@ -8,12 +8,16 @@ import {
   TextField,
   Typography,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
 
 const AccountHistoryTable = () => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [syncing, setSyncing] = useState(false);
   const [showMoneyMovement, setShowMoneyMovement] = useState(false);
   const [startDate, setStartDate] = useState(() => {
     const savedStartDate = localStorage.getItem("accountHistoryStartDate");
@@ -30,43 +34,62 @@ const AccountHistoryTable = () => {
     localStorage.setItem("accountHistoryStartDate", startDate);
   }, [startDate]);
 
-  useEffect(() => {
-    const fetchHistory = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(
-          `${process.env.REACT_APP_API_URL}/api/account-history?start-date=${startDate}&end-date=${endDate}`
-        );
-        const data = await response.json();
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_API_URL}/api/account-history?start-date=${startDate}&end-date=${endDate}`
+      );
+      const data = await response.json();
 
-        if (Array.isArray(data)) {
-          const transformedData = data.map((value) => {
-            return {
-              Date: new Date(value["executed-at"]).toLocaleDateString(),
-              Type: value["transaction-type"],
-              Action: value.action,
-              Symbol: value.symbol,
-              Quantity: value.quantity,
-              Price: value.price,
-              Value:
-                value["value-effect"] === "Debit" ? -value.value : value.value,
-              Description: value.description,
-            };
-          });
-          setHistory(transformedData);
-        } else {
-          throw new Error("Invalid account history data format");
-        }
-      } catch (err) {
-        setError("Failed to fetch account history");
-        console.error("Error:", err);
-      } finally {
-        setLoading(false);
+      if (Array.isArray(data)) {
+        const transformedData = data.map((value) => ({
+          Date: new Date(value["executed-at"]).toLocaleDateString(),
+          Type: value["transaction-type"],
+          Action: value.action,
+          Symbol: value.symbol,
+          Quantity: value.quantity,
+          Price: value.price,
+          Value: value["value-effect"] === "Debit" ? -value.value : value.value,
+          Description: value.description,
+        }));
+        setHistory(transformedData);
+      } else {
+        throw new Error("Invalid account history data format");
       }
-    };
-
-    fetchHistory();
+    } catch (err) {
+      setError("Failed to fetch account history");
+      console.error("Error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [startDate, endDate]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_API_URL}/api/account-history/sync`,
+        { method: "POST" }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to sync transactions");
+      }
+
+      // Fetch updated data after sync
+      await fetchHistory();
+    } catch (err) {
+      setError("Failed to sync transactions");
+      console.error("Error:", err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   if (error) return <Typography color="error">Error: {error}</Typography>;
 
@@ -134,6 +157,15 @@ const AccountHistoryTable = () => {
           }
           label="Show Money Movement"
         />
+        <Tooltip title="Sync latest transactions">
+          <IconButton
+            onClick={handleSync}
+            disabled={syncing || loading}
+            sx={{ ml: "auto" }}
+          >
+            {syncing ? <CircularProgress size={24} /> : <RefreshIcon />}
+          </IconButton>
+        </Tooltip>
       </Box>
 
       <PositionsTable
