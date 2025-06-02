@@ -15,8 +15,6 @@ const TransactionHistory = require("./models/TransactionHistory");
 const AnalysisResult = require("./models/AnalysisResult");
 
 // Keep track of last sync time
-let lastSyncTime = null;
-
 async function getLastSyncTime() {
   try {
     const lastTransaction = await TransactionHistory.findOne({
@@ -135,15 +133,8 @@ try {
   logError("Environment validation failed:", error.message);
 }
 
-// Session management with enhanced error handling
+// Session management
 let sessionToken = null;
-let initializationInProgress = false;
-let lastInitAttempt = 0;
-const INIT_RETRY_INTERVAL = 30000; // 30 seconds
-const MAX_RETRIES = 3;
-let retryCount = 0;
-
-// Add session storage
 let rememberMeToken = null;
 
 // Authentication middleware
@@ -167,66 +158,6 @@ async function authenticate(req, res, next) {
   } catch (error) {
     logError("Authentication failed:", error);
     res.status(401).json({ error: "Authentication required" });
-  }
-}
-
-async function initializeServer() {
-  if (initializationInProgress) {
-    logInfo("Initialization already in progress...");
-    return false;
-  }
-
-  const now = Date.now();
-  if (now - lastInitAttempt < INIT_RETRY_INTERVAL) {
-    logInfo("Too soon to retry initialization");
-    return false;
-  }
-
-  if (retryCount >= MAX_RETRIES) {
-    logError("Max retry attempts reached. Manual intervention required.");
-    return false;
-  }
-
-  initializationInProgress = true;
-  lastInitAttempt = now;
-  retryCount++;
-
-  try {
-    logInfo(
-      "Starting Tastytrade initialization attempt",
-      retryCount,
-      "of",
-      MAX_RETRIES
-    );
-
-    if (!process.env.TASTYTRADE_BASE_URL) {
-      throw new Error("Missing TASTYTRADE_BASE_URL environment variable");
-    }
-
-    // On server start, we can only initialize with remember-me token
-    if (!rememberMeToken) {
-      throw new Error("No remember-me token available for initialization");
-    }
-
-    ({ sessionToken, rememberMeToken } = await initializeTastytrade(
-      rememberMeToken
-    ));
-    logInfo("Tastytrade connection established successfully");
-
-    // Sync transactions after successful connection
-    await syncTransactions();
-
-    retryCount = 0; // Reset counter on success
-    return true;
-  } catch (error) {
-    logError("Failed to initialize Tastytrade connection:", {
-      attempt: retryCount,
-      error: error.message,
-      stack: DEBUG ? error.stack : undefined,
-    });
-    return false;
-  } finally {
-    initializationInProgress = false;
   }
 }
 
@@ -479,14 +410,6 @@ const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => {
   logInfo(`Server starting on port ${PORT}`);
   logInfo("Node environment:", process.env.NODE_ENV);
-
-  // Attempt initial connection with enhanced error handling
-  initializeServer().catch((error) => {
-    logError("Initial connection attempt failed:", {
-      error: error.message,
-      stack: DEBUG ? error.stack : undefined,
-    });
-  });
 });
 
 // Graceful shutdown
