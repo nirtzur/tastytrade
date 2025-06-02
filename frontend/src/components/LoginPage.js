@@ -11,7 +11,7 @@ import {
 import { useNavigate } from "react-router-dom";
 
 const LoginPage = () => {
-  const [username, setUsername] = useState("");
+  const [userLogin, setUserLogin] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -30,7 +30,7 @@ const LoginPage = () => {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ userLogin, password }),
         }
       );
 
@@ -79,8 +79,8 @@ const LoginPage = () => {
             label="Username"
             fullWidth
             margin="normal"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={userLogin}
+            onChange={(e) => setUserLogin(e.target.value)}
             disabled={loading}
             required
           />

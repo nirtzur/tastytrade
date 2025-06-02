@@ -136,6 +136,7 @@ try {
 // Session management
 let sessionToken = null;
 let rememberMeToken = null;
+let username = null; // Store username alongside tokens
 
 // Authentication middleware
 async function authenticate(req, res, next) {
@@ -146,12 +147,18 @@ async function authenticate(req, res, next) {
 
     logInfo("No remember-me token found, attempting to initialize session...");
     try {
-      ({ sessionToken, rememberMeToken } = await initializeTastytrade(
-        rememberMeToken
+      ({ sessionToken, rememberMeToken, username } = await initializeTastytrade(
+        {
+          rememberMeToken,
+          username,
+        }
       ));
       logInfo("Successfully refreshed session using remember-me token");
     } catch (error) {
-      rememberMeToken = null; // Clear token if refresh fails
+      // Clear all auth info if refresh fails
+      sessionToken = null;
+      rememberMeToken = null;
+      username = null;
       throw error;
     }
     next();
@@ -348,17 +355,17 @@ app.post("/api/account-history/sync", authenticate, async (req, res) => {
 // Authentication endpoints
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { userLogin, password } = req.body;
 
-    if (!username || !password) {
+    if (!userLogin || !password) {
       return res.status(400).json({
         error: "Username and password are required",
       });
     }
 
     // Initialize session with credentials
-    ({ sessionToken, rememberMeToken } = await initializeTastytrade(null, {
-      username,
+    ({ sessionToken, rememberMeToken, username } = await initializeTastytrade({
+      username: userLogin,
       password,
     }));
 
@@ -379,9 +386,10 @@ app.post("/api/auth/logout", authenticate, async (req, res) => {
       await makeRequest("DELETE", "/sessions", sessionToken);
     }
 
-    // Clear tokens
+    // Clear tokens and user info
     sessionToken = null;
     rememberMeToken = null;
+    username = null;
 
     res.json({ success: true });
   } catch (error) {

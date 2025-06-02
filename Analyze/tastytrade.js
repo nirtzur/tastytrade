@@ -74,10 +74,11 @@ async function makeRequest(
   }
 }
 
-async function initializeTastytrade(
+async function initializeTastytrade({
   rememberMeToken = null,
-  credentials = null
-) {
+  username = null,
+  password = null,
+}) {
   try {
     validateEnvironment();
     console.log(
@@ -85,26 +86,14 @@ async function initializeTastytrade(
       process.env.TASTYTRADE_BASE_URL
     );
 
-    let data = {};
+    let data = { "remember-me": true, login: username }; // Always request a remember-me token
+
     let endpoint = "/sessions";
 
     if (rememberMeToken) {
-      // Use remember-me token to create session
-      endpoint = "/sessions/remember";
-      data = { "remember-token": rememberMeToken };
-    } else if (credentials) {
-      // Use provided credentials to create session and always request remember-me token
-      if (!credentials.username || !credentials.password) {
-        throw new Error("Username and password are required");
-      }
-
-      data = {
-        login: credentials.username,
-        password: credentials.password,
-        "remember-me": true, // Always request a remember-me token
-      };
+      data["remember-token"] = rememberMeToken; // Use remember-me token to create session
     } else {
-      throw new Error("Either remember-me token or credentials are required");
+      data["password"] = password;
     }
 
     const response = await makeRequest("post", endpoint, null, data);
@@ -120,10 +109,11 @@ async function initializeTastytrade(
       throw new Error("No session token received in response");
     }
 
-    // Return both tokens in consistent format
+    // Return tokens and username in consistent format
     return {
       sessionToken: response.data["session-token"].replace(/\n/g, ""),
       rememberMeToken: response.data["remember-token"],
+      username: data.login, // Include username in response
     };
   } catch (error) {
     console.error("Authentication error details:", {
