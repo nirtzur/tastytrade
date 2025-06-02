@@ -12,6 +12,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import client from "../api/client";
 
 const AccountHistoryTable = () => {
   const [history, setHistory] = useState([]);
@@ -37,10 +38,9 @@ const AccountHistoryTable = () => {
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/account-history?start-date=${startDate}&end-date=${endDate}`
+      const { data } = await client.get(
+        `/api/account-history?start-date=${startDate}&end-date=${endDate}`
       );
-      const data = await response.json();
 
       if (Array.isArray(data)) {
         const transformedData = data.map(
@@ -80,14 +80,7 @@ const AccountHistoryTable = () => {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/account-history/sync`,
-        { method: "POST" }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to sync transactions");
-      }
+      await client.post("/api/account-history/sync");
 
       // Fetch updated data after sync
       await fetchHistory();
@@ -170,13 +163,15 @@ const AccountHistoryTable = () => {
           label="Show Money Movement"
         />
         <Tooltip title="Sync latest transactions">
-          <IconButton
-            onClick={handleSync}
-            disabled={syncing || loading}
-            sx={{ ml: "auto" }}
-          >
-            {syncing ? <CircularProgress size={24} /> : <RefreshIcon />}
-          </IconButton>
+          <span>
+            <IconButton
+              onClick={handleSync}
+              disabled={syncing || loading}
+              sx={{ ml: "auto" }}
+            >
+              {syncing ? <CircularProgress size={24} /> : <RefreshIcon />}
+            </IconButton>
+          </span>
         </Tooltip>
       </Box>
 

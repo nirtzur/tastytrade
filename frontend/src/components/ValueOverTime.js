@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
+import client from "../api/client";
 
 // Add isoWeek plugin to get Monday-based weeks
 dayjs.extend(isoWeek);
@@ -103,19 +104,11 @@ const ValueOverTime = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(
-        `${
-          process.env.REACT_APP_API_URL
-        }/api/account-history?start-date=${startDate.format(
+      const { data } = await client.get(
+        `/api/account-history?start-date=${startDate.format(
           "YYYY-MM-DD"
         )}&end-date=${endDate.format("YYYY-MM-DD")}`
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch value data");
-      }
-
-      const data = await response.json();
       const processedData = processTransactions(data);
       setChartData(processedData);
     } catch (err) {

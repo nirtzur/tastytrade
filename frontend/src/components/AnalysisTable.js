@@ -15,6 +15,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
+import client from "../api/client";
 
 const AnalysisTable = () => {
   const [rawData, setRawData] = useState([]);
@@ -67,13 +68,7 @@ const AnalysisTable = () => {
 
   const fetchAnalysisData = useCallback(async () => {
     try {
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/trading-data`
-      );
-      if (!response.ok) {
-        throw new Error("Failed to fetch analysis data");
-      }
-      const data = await response.json();
+      const { data } = await client.get("/api/trading-data");
 
       if (Array.isArray(data)) {
         const transformedData = data.map(
@@ -150,14 +145,7 @@ const AnalysisTable = () => {
       setRefreshing(true);
       setError(null);
 
-      const refreshResponse = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/trading-data/refresh`,
-        { method: "POST" }
-      );
-
-      if (!refreshResponse.ok) {
-        throw new Error("Failed to refresh analysis");
-      }
+      await client.post("/api/trading-data/refresh");
 
       await fetchAnalysisData();
     } catch (err) {

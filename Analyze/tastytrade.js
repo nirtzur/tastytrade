@@ -109,11 +109,16 @@ async function initializeTastytrade({
       throw new Error("No session token received in response");
     }
 
-    // Return tokens and username in consistent format
+    if (!response.data?.["session-expiration"]) {
+      throw new Error("No session expiration received in response");
+    }
+
+    // Return tokens, username and expiration time in consistent format
     return {
       sessionToken: response.data["session-token"].replace(/\n/g, ""),
       rememberMeToken: response.data["remember-token"],
       username: data.login, // Include username in response
+      expiresAt: response.data["session-expiration"], // Use API-provided expiration time
     };
   } catch (error) {
     console.error("Authentication error details:", {

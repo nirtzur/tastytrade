@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Box, Typography, CircularProgress } from "@mui/material";
+import client from "../api/client";
 
 const createUTCDate = (year, month, day) => {
   return new Date(Date.UTC(year, month, day));
@@ -56,10 +57,9 @@ const VisualPage = () => {
               )
             );
 
-        const response = await fetch(
-          `${process.env.REACT_APP_API_URL}/api/account-history?start-date=${startDate}&end-date=${endDate}`
+        const { data } = await client.get(
+          `/api/account-history?start-date=${startDate}&end-date=${endDate}`
         );
-        const data = await response.json();
 
         // Generate all Sundays between start and end date using UTC
         const allWeeks = {};

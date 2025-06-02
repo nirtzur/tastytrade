@@ -137,28 +137,49 @@ try {
 let sessionToken = null;
 let rememberMeToken = null;
 let username = null; // Store username alongside tokens
+let sessionExpiresAt = null; // Track session expiration time
 
 // Authentication middleware
 async function authenticate(req, res, next) {
   try {
+    logInfo(`Authentication requested for route: ${req.method} ${req.path}`);
+
+    // Check if we have a valid session
+    if (sessionToken && sessionExpiresAt) {
+      const now = new Date();
+      const expiryDate = new Date(sessionExpiresAt);
+
+      if (now < expiryDate) {
+        logInfo("Using existing valid session token");
+        next();
+        return;
+      }
+      logInfo("Session token expired, will refresh using remember-me token");
+    }
+
+    // No valid session, try to refresh using remember-me token
     if (!rememberMeToken) {
       throw new Error("No remember-me token available");
     }
 
-    logInfo("No remember-me token found, attempting to initialize session...");
+    logInfo("Attempting to initialize session with remember-me token...");
     try {
-      ({ sessionToken, rememberMeToken, username } = await initializeTastytrade(
-        {
-          rememberMeToken,
-          username,
-        }
-      ));
+      ({
+        sessionToken,
+        rememberMeToken,
+        username,
+        expiresAt: sessionExpiresAt,
+      } = await initializeTastytrade({
+        rememberMeToken,
+        username,
+      }));
       logInfo("Successfully refreshed session using remember-me token");
     } catch (error) {
       // Clear all auth info if refresh fails
       sessionToken = null;
       rememberMeToken = null;
       username = null;
+      sessionExpiresAt = null;
       throw error;
     }
     next();
@@ -364,7 +385,12 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     // Initialize session with credentials
-    ({ sessionToken, rememberMeToken, username } = await initializeTastytrade({
+    ({
+      sessionToken,
+      rememberMeToken,
+      username,
+      expiresAt: sessionExpiresAt,
+    } = await initializeTastytrade({
       username: userLogin,
       password,
     }));
@@ -390,6 +416,7 @@ app.post("/api/auth/logout", authenticate, async (req, res) => {
     sessionToken = null;
     rememberMeToken = null;
     username = null;
+    sessionExpiresAt = null;
 
     res.json({ success: true });
   } catch (error) {

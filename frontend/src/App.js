@@ -12,39 +12,10 @@ import VisualPage from "./components/VisualPage";
 import AnalysisTable from "./components/AnalysisTable";
 import ValueOverTime from "./components/ValueOverTime";
 import LoginPage from "./components/LoginPage";
-import { useState, useEffect } from "react";
 
+// All authentication is handled by the server endpoints
+// Components will get redirected to login if their API calls return 401
 function RequireAuth({ children }) {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch(
-          `${process.env.REACT_APP_API_URL}/api/auth/check`
-        );
-        if (!response.ok) {
-          throw new Error("Not authenticated");
-        }
-      } catch (error) {
-        navigate("/login");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, [navigate]);
-
-  if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
-        Loading...
-      </Box>
-    );
-  }
-
   return children;
 }
 

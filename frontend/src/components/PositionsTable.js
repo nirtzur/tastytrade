@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import DataTable from "./DataTable";
 import { Box, Typography, CircularProgress } from "@mui/material";
+import client from "../api/client";
 
 const PositionsTable = ({ onTotalValueChange, onLoadingChange }) => {
   const [positions, setPositions] = useState([]);
@@ -12,10 +13,7 @@ const PositionsTable = ({ onTotalValueChange, onLoadingChange }) => {
       setLoading(true);
       onLoadingChange?.(true);
       try {
-        const response = await fetch(
-          `${process.env.REACT_APP_API_URL}/api/positions`
-        );
-        const data = await response.json();
+        const { data } = await client.get("/api/positions");
 
         if (Array.isArray(data)) {
           const transformedData = data.map(

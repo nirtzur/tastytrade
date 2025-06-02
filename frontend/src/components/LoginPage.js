@@ -9,6 +9,7 @@ import {
   Alert,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import client from "../api/client";
 
 const LoginPage = () => {
   const [userLogin, setUserLogin] = useState("");
@@ -23,21 +24,7 @@ const LoginPage = () => {
     setError(null);
 
     try {
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/auth/login`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ userLogin, password }),
-        }
-      );
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || "Login failed");
-      }
+      await client.post("/api/auth/login", { userLogin, password });
 
       // Login successful, redirect to home page
       navigate("/account-history");
