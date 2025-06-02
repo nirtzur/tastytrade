@@ -22,20 +22,16 @@ steps:
   # Deploy to App Engine
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
-    secretEnv: ['TASTYTRADE_USERNAME', 'TASTYTRADE_PASSWORD', 'TASTYTRADE_ACCOUNT_NUMBER']
+    secretEnv: ['TASTYTRADE_ACCOUNT_NUMBER']
     args:
       - '-c'
       - |
-        sed -i'.bak' "s/NODE_ENV: .*/NODE_ENV: \"production\"\\n  TASTYTRADE_USERNAME: \"$$TASTYTRADE_USERNAME\"\\n  TASTYTRADE_PASSWORD: \"$$TASTYTRADE_PASSWORD\"\\n  TASTYTRADE_ACCOUNT_NUMBER: \"$$TASTYTRADE_ACCOUNT_NUMBER\"/" app.yaml && \
+        sed -i'.bak' "s/NODE_ENV: .*/NODE_ENV: \"production\"\\n  TASTYTRADE_ACCOUNT_NUMBER: \"$$TASTYTRADE_ACCOUNT_NUMBER\"/" app.yaml && \
         gcloud app deploy app.yaml \
           --quiet \
           --project tastytrade-459820
 
 availableSecrets:
   secretManager:
-    - versionName: projects/tastytrade-459820/secrets/TASTYTRADE_USERNAME/versions/latest
-      env: 'TASTYTRADE_USERNAME'
-    - versionName: projects/tastytrade-459820/secrets/TASTYTRADE_PASSWORD/versions/latest
-      env: 'TASTYTRADE_PASSWORD'
     - versionName: projects/tastytrade-459820/secrets/TASTYTRADE_ACCOUNT_NUMBER/versions/latest
       env: 'TASTYTRADE_ACCOUNT_NUMBER'

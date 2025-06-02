@@ -43,16 +43,28 @@ const AccountHistoryTable = () => {
       const data = await response.json();
 
       if (Array.isArray(data)) {
-        const transformedData = data.map((value) => ({
-          Date: new Date(value["executed-at"]).toLocaleDateString(),
-          Type: value["transaction-type"],
-          Action: value.action,
-          Symbol: value.symbol,
-          Quantity: value.quantity,
-          Price: value.price,
-          Value: value["value-effect"] === "Debit" ? -value.value : value.value,
-          Description: value.description,
-        }));
+        const transformedData = data.map(
+          ({
+            "executed-at": executedAt,
+            "transaction-type": transactionType,
+            action,
+            symbol,
+            quantity,
+            price,
+            value,
+            "value-effect": valueEffect,
+            description,
+          }) => ({
+            Date: new Date(executedAt).toLocaleDateString(),
+            Type: transactionType,
+            Action: action,
+            Symbol: symbol,
+            Quantity: quantity,
+            Price: price,
+            Value: valueEffect === "Debit" ? -value : value,
+            Description: description,
+          })
+        );
         setHistory(transformedData);
       } else {
         throw new Error("Invalid account history data format");

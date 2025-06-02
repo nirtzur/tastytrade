@@ -3,12 +3,7 @@ const sleep = require("./utils/sleep");
 require("dotenv").config();
 
 // Validate required environment variables
-const REQUIRED_ENV_VARS = [
-  "TASTYTRADE_BASE_URL",
-  "TASTYTRADE_USERNAME",
-  "TASTYTRADE_PASSWORD",
-  "TASTYTRADE_ACCOUNT_NUMBER",
-];
+const REQUIRED_ENV_VARS = ["TASTYTRADE_BASE_URL", "TASTYTRADE_ACCOUNT_NUMBER"];
 
 function validateEnvironment() {
   const missing = REQUIRED_ENV_VARS.filter((varName) => !process.env[varName]);
@@ -79,7 +74,10 @@ async function makeRequest(
   }
 }
 
-async function initializeTastytrade() {
+async function initializeTastytrade(
+  rememberMeToken = null,
+  credentials = null
+) {
   try {
     validateEnvironment();
     console.log(
@@ -87,39 +85,51 @@ async function initializeTastytrade() {
       process.env.TASTYTRADE_BASE_URL
     );
 
-    if (!process.env.TASTYTRADE_USERNAME || !process.env.TASTYTRADE_PASSWORD) {
-      throw new Error("Missing required credentials in environment variables");
+    let data = {};
+    let endpoint = "/sessions";
+
+    if (rememberMeToken) {
+      // Use remember-me token to create session
+      endpoint = "/sessions/remember";
+      data = { "remember-token": rememberMeToken };
+    } else if (credentials) {
+      // Use provided credentials to create session and always request remember-me token
+      if (!credentials.username || !credentials.password) {
+        throw new Error("Username and password are required");
+      }
+
+      data = {
+        login: credentials.username,
+        password: credentials.password,
+        "remember-me": true, // Always request a remember-me token
+      };
+    } else {
+      throw new Error("Either remember-me token or credentials are required");
     }
 
-    const response = await makeRequest("post", "/sessions", null, {
-      login: process.env.TASTYTRADE_USERNAME,
-      password: process.env.TASTYTRADE_PASSWORD,
-    });
+    const response = await makeRequest("post", endpoint, null, data);
 
     console.log("Login response received:", {
       status: "success",
       hasData: !!response?.data,
       hasSessionToken: !!response?.data?.["session-token"],
+      hasRememberToken: !!response?.data?.["remember-token"],
     });
 
-    const sessionToken = response?.data?.["session-token"];
-    if (!sessionToken) {
+    if (!response?.data?.["session-token"]) {
       throw new Error("No session token received in response");
     }
 
-    // Remove any newline characters from the token
-    const token = sessionToken.replace(/\n/g, "");
-    return token;
+    // Return both tokens in consistent format
+    return {
+      sessionToken: response.data["session-token"].replace(/\n/g, ""),
+      rememberMeToken: response.data["remember-token"],
+    };
   } catch (error) {
     console.error("Authentication error details:", {
       message: error.message,
       response: error.response?.data,
       status: error.response?.status,
-      hasEnvVars: {
-        baseUrl: !!process.env.TASTYTRADE_BASE_URL,
-        username: !!process.env.TASTYTRADE_USERNAME,
-        password: !!process.env.TASTYTRADE_PASSWORD,
-      },
     });
     throw new Error(`Failed to authenticate with Tastytrade: ${error.message}`);
   }

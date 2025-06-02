@@ -76,36 +76,50 @@ const AnalysisTable = () => {
       const data = await response.json();
 
       if (Array.isArray(data)) {
-        const transformedData = data.map((analysis) => ({
-          Symbol: (
-            <Link
-              component="button"
-              onClick={() => openYahooFinance(analysis.symbol)}
-              sx={{
-                textDecoration: "none",
-                "&:hover": {
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                },
-              }}
-            >
-              {analysis.symbol}
-            </Link>
-          ),
-          "Current Price": `$${analysis.current_price || "N/A"}`,
-          "Stock Spread": `$${analysis.stock_spread || "N/A"}`,
-          "Strike Price": `$${analysis.option_strike_price || "N/A"}`,
-          "Option Mid": `$${analysis.option_mid_price || "N/A"}`,
-          "Mid %": `${analysis.option_mid_percent}%` || "N/A",
-          Expiration: analysis.option_expiration_date
-            ? new Date(analysis.option_expiration_date).toLocaleDateString()
-            : "N/A",
-          "Days to Earnings": analysis.days_to_earnings || "N/A",
-          Status: analysis.status,
-          Notes: analysis.notes,
-          "Analyzed At": new Date(analysis.analyzed_at).toLocaleString(),
-          analyzed_at: analysis.analyzed_at, // Keep original date for sorting
-        }));
+        const transformedData = data.map(
+          ({
+            symbol,
+            current_price,
+            stock_spread,
+            option_strike_price,
+            option_mid_price,
+            option_mid_percent,
+            option_expiration_date,
+            days_to_earnings,
+            status,
+            notes,
+            analyzed_at,
+          }) => ({
+            Symbol: (
+              <Link
+                component="button"
+                onClick={() => openYahooFinance(symbol)}
+                sx={{
+                  textDecoration: "none",
+                  "&:hover": {
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                  },
+                }}
+              >
+                {symbol}
+              </Link>
+            ),
+            "Current Price": `$${current_price || "N/A"}`,
+            "Stock Spread": `$${stock_spread || "N/A"}`,
+            "Strike Price": `$${option_strike_price || "N/A"}`,
+            "Option Mid": `$${option_mid_price || "N/A"}`,
+            "Mid %": `${option_mid_percent}%` || "N/A",
+            Expiration: option_expiration_date
+              ? new Date(option_expiration_date).toLocaleDateString()
+              : "N/A",
+            "Days to Earnings": days_to_earnings || "N/A",
+            Status: status,
+            Notes: notes,
+            "Analyzed At": new Date(analyzed_at).toLocaleString(),
+            analyzed_at, // Keep original date for sorting
+          })
+        );
 
         // Find the latest date
         const latestDate = transformedData.reduce((latest, current) => {

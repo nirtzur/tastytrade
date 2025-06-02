@@ -18,29 +18,37 @@ const PositionsTable = ({ onTotalValueChange, onLoadingChange }) => {
         const data = await response.json();
 
         if (Array.isArray(data)) {
-          const transformedData = data.map((position) => {
-            const strikePrice = parseFloat(position["close-price"]) || 0;
-            const optionPrice = parseFloat(position["option-price"]) || 0;
-            const quantity = parseFloat(position.quantity) || 0;
-            const acquisitionPrice =
-              parseFloat(position["average-open-price"]) || 0;
-            const yahooPrice = parseFloat(position.yahoo_price) || 0;
+          const transformedData = data.map(
+            ({
+              symbol,
+              quantity: rawQuantity,
+              "close-price": rawStrikePrice,
+              "option-price": rawOptionPrice,
+              "average-open-price": rawAcquisitionPrice,
+              yahoo_price: rawYahooPrice,
+            }) => {
+              const strikePrice = parseFloat(rawStrikePrice) || 0;
+              const optionPrice = parseFloat(rawOptionPrice) || 0;
+              const quantity = parseFloat(rawQuantity) || 0;
+              const acquisitionPrice = parseFloat(rawAcquisitionPrice) || 0;
+              const yahooPrice = parseFloat(rawYahooPrice) || 0;
 
-            const value = quantity * Math.min(yahooPrice, optionPrice);
-            const acquisitionCost = quantity * acquisitionPrice;
-            const pnl = value - acquisitionCost;
+              const value = quantity * Math.min(yahooPrice, optionPrice);
+              const acquisitionCost = quantity * acquisitionPrice;
+              const pnl = value - acquisitionCost;
 
-            return {
-              Symbol: position.symbol,
-              Quantity: quantity,
-              "Strike Price": strikePrice,
-              "Option Price": optionPrice,
-              "Acquisition Price": acquisitionPrice,
-              "Yahoo Price": yahooPrice ? yahooPrice.toFixed(2) : "N/A",
-              Value: value.toFixed(2),
-              "P/L": pnl.toFixed(2),
-            };
-          });
+              return {
+                Symbol: symbol,
+                Quantity: quantity,
+                "Strike Price": strikePrice,
+                "Option Price": optionPrice,
+                "Acquisition Price": acquisitionPrice,
+                "Yahoo Price": yahooPrice ? yahooPrice.toFixed(2) : "N/A",
+                Value: value.toFixed(2),
+                "P/L": pnl.toFixed(2),
+              };
+            }
+          );
           setPositions(transformedData);
 
           // Calculate and pass up total value

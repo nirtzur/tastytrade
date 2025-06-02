@@ -39,7 +39,7 @@ async function syncTransactions() {
 
     const formatDate = (date) => date.toISOString().split(".")[0];
     const transactions = await getAccountHistory(
-      tastytradeSessionToken,
+      sessionToken,
       formatDate(lastSync),
       formatDate(now)
     );
@@ -105,12 +105,7 @@ function logError(...args) {
 }
 
 // Validate environment variables
-const REQUIRED_ENV_VARS = [
-  "TASTYTRADE_BASE_URL",
-  "TASTYTRADE_USERNAME",
-  "TASTYTRADE_PASSWORD",
-  "TASTYTRADE_ACCOUNT_NUMBER",
-];
+const REQUIRED_ENV_VARS = ["TASTYTRADE_BASE_URL", "TASTYTRADE_ACCOUNT_NUMBER"];
 
 function validateEnvironment() {
   const missing = REQUIRED_ENV_VARS.filter((varName) => {
@@ -141,12 +136,39 @@ try {
 }
 
 // Session management with enhanced error handling
-let tastytradeSessionToken = null;
+let sessionToken = null;
 let initializationInProgress = false;
 let lastInitAttempt = 0;
 const INIT_RETRY_INTERVAL = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 let retryCount = 0;
+
+// Add session storage
+let rememberMeToken = null;
+
+// Authentication middleware
+async function authenticate(req, res, next) {
+  try {
+    if (!rememberMeToken) {
+      throw new Error("No remember-me token available");
+    }
+
+    logInfo("No remember-me token found, attempting to initialize session...");
+    try {
+      ({ sessionToken, rememberMeToken } = await initializeTastytrade(
+        rememberMeToken
+      ));
+      logInfo("Successfully refreshed session using remember-me token");
+    } catch (error) {
+      rememberMeToken = null; // Clear token if refresh fails
+      throw error;
+    }
+    next();
+  } catch (error) {
+    logError("Authentication failed:", error);
+    res.status(401).json({ error: "Authentication required" });
+  }
+}
 
 async function initializeServer() {
   if (initializationInProgress) {
@@ -177,15 +199,18 @@ async function initializeServer() {
       MAX_RETRIES
     );
 
-    if (
-      !process.env.TASTYTRADE_BASE_URL ||
-      !process.env.TASTYTRADE_USERNAME ||
-      !process.env.TASTYTRADE_PASSWORD
-    ) {
-      throw new Error("Missing required environment variables");
+    if (!process.env.TASTYTRADE_BASE_URL) {
+      throw new Error("Missing TASTYTRADE_BASE_URL environment variable");
     }
 
-    tastytradeSessionToken = await initializeTastytrade();
+    // On server start, we can only initialize with remember-me token
+    if (!rememberMeToken) {
+      throw new Error("No remember-me token available for initialization");
+    }
+
+    ({ sessionToken, rememberMeToken } = await initializeTastytrade(
+      rememberMeToken
+    ));
     logInfo("Tastytrade connection established successfully");
 
     // Sync transactions after successful connection
@@ -202,30 +227,6 @@ async function initializeServer() {
     return false;
   } finally {
     initializationInProgress = false;
-  }
-}
-
-// Enhanced middleware with better error handling
-async function ensureSession(req, res, next) {
-  try {
-    if (!tastytradeSessionToken) {
-      logInfo("No session token found, attempting initialization...");
-      const initialized = await initializeServer();
-      if (!initialized) {
-        logError("Session initialization failed");
-        return res.status(503).json({
-          error: "Service temporarily unavailable",
-          retryAfter: Math.ceil(INIT_RETRY_INTERVAL / 1000),
-        });
-      }
-    }
-    next();
-  } catch (error) {
-    logError("Error in ensureSession middleware:", error);
-    return res.status(503).json({
-      error: "Service error during session initialization",
-      retryAfter: Math.ceil(INIT_RETRY_INTERVAL / 1000),
-    });
   }
 }
 
@@ -246,7 +247,7 @@ if (process.env.NODE_ENV === "production") {
 }
 
 // Enhanced API endpoints with better error handling
-app.get("/api/account-history", ensureSession, async (req, res) => {
+app.get("/api/account-history", authenticate, async (req, res) => {
   try {
     logInfo("Received account-history request:", req.query);
     const { "start-date": startDate, "end-date": endDate } = req.query;
@@ -298,7 +299,7 @@ app.get("/api/account-history", ensureSession, async (req, res) => {
   }
 });
 
-app.get("/api/trading-data", ensureSession, async (req, res) => {
+app.get("/api/trading-data", authenticate, async (req, res) => {
   try {
     logInfo("Fetching trading data from database");
 
@@ -335,10 +336,10 @@ app.get("/api/trading-data", ensureSession, async (req, res) => {
   }
 });
 
-app.get("/api/positions", ensureSession, async (req, res) => {
+app.get("/api/positions", authenticate, async (req, res) => {
   try {
     logInfo("Fetching positions");
-    const positions = await getPositions(tastytradeSessionToken);
+    const positions = await getPositions(sessionToken);
 
     // Fetch Yahoo Finance prices for all symbols
     const symbolPrices = await Promise.all(
@@ -378,7 +379,7 @@ app.get("/api/positions", ensureSession, async (req, res) => {
   }
 });
 
-app.post("/api/trading-data/refresh", ensureSession, async (req, res) => {
+app.post("/api/trading-data/refresh", authenticate, async (req, res) => {
   try {
     logInfo("Starting analysis refresh");
     // Get symbols
@@ -387,7 +388,7 @@ app.post("/api/trading-data/refresh", ensureSession, async (req, res) => {
     const symbolsToProcess = [...sp500Symbols, ...etfSymbols];
 
     logInfo(`Processing ${symbolsToProcess.length} symbols...`);
-    await processSymbols(symbolsToProcess, tastytradeSessionToken);
+    await processSymbols(symbolsToProcess, sessionToken);
 
     res.json({ success: true, message: "Analysis refresh complete" });
   } catch (error) {
@@ -399,7 +400,7 @@ app.post("/api/trading-data/refresh", ensureSession, async (req, res) => {
   }
 });
 
-app.post("/api/account-history/sync", ensureSession, async (req, res) => {
+app.post("/api/account-history/sync", authenticate, async (req, res) => {
   try {
     logInfo("Starting manual transaction sync");
     await syncTransactions();
@@ -411,6 +412,58 @@ app.post("/api/account-history/sync", ensureSession, async (req, res) => {
       message: error.message,
     });
   }
+});
+
+// Authentication endpoints
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        error: "Username and password are required",
+      });
+    }
+
+    // Initialize session with credentials
+    ({ sessionToken, rememberMeToken } = await initializeTastytrade(null, {
+      username,
+      password,
+    }));
+
+    res.json({ success: true });
+  } catch (error) {
+    logError("Login failed:", error);
+    res.status(401).json({
+      error: "Authentication failed",
+      message: error.message,
+    });
+  }
+});
+
+app.post("/api/auth/logout", authenticate, async (req, res) => {
+  try {
+    if (sessionToken) {
+      // Call TastyTrade API to invalidate the session
+      await makeRequest("DELETE", "/sessions", sessionToken);
+    }
+
+    // Clear tokens
+    sessionToken = null;
+    rememberMeToken = null;
+
+    res.json({ success: true });
+  } catch (error) {
+    logError("Logout failed:", error);
+    res.status(500).json({
+      error: "Logout failed",
+      message: error.message,
+    });
+  }
+});
+
+app.get("/api/auth/check", authenticate, (req, res) => {
+  res.json({ authenticated: true });
 });
 
 // Production routing

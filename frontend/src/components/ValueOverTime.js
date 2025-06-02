@@ -64,30 +64,36 @@ const ValueOverTime = () => {
         (a, b) => new Date(a["executed-at"]) - new Date(b["executed-at"])
       );
 
-      transactions.forEach((transaction) => {
-        const txDate = dayjs(transaction["executed-at"]);
-        const value = parseFloat(transaction.value) || 0;
+      transactions.forEach(
+        ({
+          "executed-at": executedAt,
+          value: txValue,
+          "value-effect": valueEffect,
+        }) => {
+          const txDate = dayjs(executedAt);
+          const value = parseFloat(txValue) || 0;
 
-        // Update running total based on transaction type
-        if (transaction["value-effect"] === "Debit") {
-          runningTotal -= value;
-        } else {
-          runningTotal += value;
-        }
+          // Update running total based on transaction type
+          if (valueEffect === "Debit") {
+            runningTotal -= value;
+          } else {
+            runningTotal += value;
+          }
 
-        // Update all weeks from this transaction forward
-        currentWeek = txDate.startOf("isoWeek");
-        while (currentWeek.isBefore(end) || currentWeek.isSame(end, "week")) {
-          const weekKey = currentWeek.format("YYYY-MM-DD");
-          weeklyValues.set(weekKey, {
-            date: weekKey,
-            value: runningTotal,
-            weekStart: currentWeek.format("MM/DD"),
-            weekEnd: currentWeek.endOf("isoWeek").format("MM/DD"),
-          });
-          currentWeek = currentWeek.add(1, "week");
+          // Update all weeks from this transaction forward
+          currentWeek = txDate.startOf("isoWeek");
+          while (currentWeek.isBefore(end) || currentWeek.isSame(end, "week")) {
+            const weekKey = currentWeek.format("YYYY-MM-DD");
+            weeklyValues.set(weekKey, {
+              date: weekKey,
+              value: runningTotal,
+              weekStart: currentWeek.format("MM/DD"),
+              weekEnd: currentWeek.endOf("isoWeek").format("MM/DD"),
+            });
+            currentWeek = currentWeek.add(1, "week");
+          }
         }
-      });
+      );
 
       // Convert map to array and sort by date
       return Array.from(weeklyValues.values()).sort((a, b) =>
