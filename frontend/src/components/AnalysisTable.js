@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import DataTable from "./DataTable";
 import {
   Box,
@@ -17,44 +17,21 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import client from "../api/client";
 
+const excludedStatusesConst = {
+  LOW_STOCK_PRICE: true,
+  LOW_MID_PERCENT: true,
+};
+
 const AnalysisTable = () => {
   const [rawData, setRawData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState(null);
   const [selectedStatuses, setSelectedStatuses] = useState("hide_low");
   const [selectedDate, setSelectedDate] = useState(null);
-  const [excludedStatuses] = useState({
-    LOW_STOCK_PRICE: true,
-    LOW_MID_PERCENT: true,
-  });
 
-  const applyFilters = useCallback(
-    (data) => {
-      // First apply status filter
-      let filtered = data;
-      if (selectedStatuses !== "all") {
-        if (selectedStatuses === "hide_low") {
-          filtered = data.filter((row) => !excludedStatuses[row.Status]);
-        } else {
-          filtered = data.filter((row) => row.Status === selectedStatuses);
-        }
-      }
-
-      // Then apply date filter
-      const filterDate = selectedDate || dayjs();
-      return filtered.filter((row) => {
-        const analyzedDate = dayjs(row["Analyzed At"]);
-        return (
-          analyzedDate.format("YYYY-MM-DD") === filterDate.format("YYYY-MM-DD")
-        );
-      });
-    },
-    [excludedStatuses, selectedStatuses, selectedDate]
-  );
-
-  const openYahooFinance = (symbol) => {
+  const openYahooFinance = useCallback((symbol) => {
     window.open(
       `https://finance.yahoo.com/chart/${symbol}?period1=${Math.floor(
         (Date.now() - 180 * 24 * 60 * 60 * 1000) / 1000
@@ -64,90 +41,144 @@ const AnalysisTable = () => {
       "_blank",
       "width=1200,height=800"
     );
-  };
+  }, []);
 
-  const fetchAnalysisData = useCallback(async () => {
-    try {
-      const { data } = await client.get("/api/trading-data");
+  const transformData = useCallback(
+    (data) => {
+      return data.map(
+        ({
+          symbol,
+          current_price,
+          stock_spread,
+          option_strike_price,
+          option_mid_price,
+          option_mid_percent,
+          option_expiration_date,
+          days_to_earnings,
+          status,
+          notes,
+          analyzed_at,
+        }) => ({
+          Symbol: (
+            <Link
+              component="button"
+              onClick={() => openYahooFinance(symbol)}
+              sx={{
+                textDecoration: "none",
+                "&:hover": {
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                },
+              }}
+            >
+              {symbol}
+            </Link>
+          ),
+          "Current Price": `$${current_price || "N/A"}`,
+          "Stock Spread": `$${stock_spread || "N/A"}`,
+          "Strike Price": `$${option_strike_price || "N/A"}`,
+          "Option Mid": `$${option_mid_price || "N/A"}`,
+          "Mid %": `${option_mid_percent}%` || "N/A",
+          Expiration: option_expiration_date
+            ? new Date(option_expiration_date).toLocaleDateString()
+            : "N/A",
+          "Days to Earnings": days_to_earnings || "N/A",
+          Status: status,
+          Notes: notes,
+          "Analyzed At": new Date(analyzed_at).toLocaleString(),
+          analyzed_at,
+        })
+      );
+    },
+    [openYahooFinance]
+  );
 
-      if (Array.isArray(data)) {
-        const transformedData = data.map(
-          ({
-            symbol,
-            current_price,
-            stock_spread,
-            option_strike_price,
-            option_mid_price,
-            option_mid_percent,
-            option_expiration_date,
-            days_to_earnings,
-            status,
-            notes,
-            analyzed_at,
-          }) => ({
-            Symbol: (
-              <Link
-                component="button"
-                onClick={() => openYahooFinance(symbol)}
-                sx={{
-                  textDecoration: "none",
-                  "&:hover": {
-                    textDecoration: "underline",
-                    cursor: "pointer",
-                  },
-                }}
-              >
-                {symbol}
-              </Link>
-            ),
-            "Current Price": `$${current_price || "N/A"}`,
-            "Stock Spread": `$${stock_spread || "N/A"}`,
-            "Strike Price": `$${option_strike_price || "N/A"}`,
-            "Option Mid": `$${option_mid_price || "N/A"}`,
-            "Mid %": `${option_mid_percent}%` || "N/A",
-            Expiration: option_expiration_date
-              ? new Date(option_expiration_date).toLocaleDateString()
-              : "N/A",
-            "Days to Earnings": days_to_earnings || "N/A",
-            Status: status,
-            Notes: notes,
-            "Analyzed At": new Date(analyzed_at).toLocaleString(),
-            analyzed_at, // Keep original date for sorting
-          })
-        );
+  const applyFilters = useCallback(
+    (data) => {
+      if (!data.length) return [];
 
-        // Find the latest date
-        const latestDate = transformedData.reduce((latest, current) => {
-          const currentDate = dayjs(current.analyzed_at);
-          return latest.isAfter(currentDate) ? latest : currentDate;
-        }, dayjs(transformedData[0]?.analyzed_at));
-
-        // Set the initial date only if it hasn't been set yet
-        if (!selectedDate) {
-          setSelectedDate(latestDate);
+      // First apply status filter
+      let filtered = data;
+      if (selectedStatuses !== "all") {
+        if (selectedStatuses === "hide_low") {
+          filtered = data.filter((row) => !excludedStatusesConst[row.Status]);
+        } else {
+          filtered = data.filter((row) => row.Status === selectedStatuses);
         }
-
-        setRawData(transformedData);
-        setFilteredData(applyFilters(transformedData));
-      } else {
-        throw new Error("Invalid analysis data format");
       }
-    } catch (err) {
-      setError("Failed to fetch analysis data");
-      console.error("Error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [applyFilters, selectedDate]);
+
+      // Then apply date filter
+      const filterDate = selectedDate || dayjs();
+      return filtered.filter((row) => {
+        const analyzedDate = dayjs(row.analyzed_at);
+        return (
+          analyzedDate.format("YYYY-MM-DD") === filterDate.format("YYYY-MM-DD")
+        );
+      });
+    },
+    [selectedStatuses, selectedDate]
+  ); // Fetch initial data
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchAnalysisData = async () => {
+      if (!mounted) return;
+
+      try {
+        setLoading(true);
+        const { data } = await client.get("/api/trading-data");
+
+        if (!mounted) return;
+
+        if (Array.isArray(data)) {
+          const transformedData = transformData(data);
+
+          // Find the latest date
+          if (transformedData.length > 0 && !selectedDate) {
+            const latestDate = transformedData.reduce((latest, current) => {
+              const currentDate = dayjs(current.analyzed_at);
+              return latest.isAfter(currentDate) ? latest : currentDate;
+            }, dayjs(transformedData[0].analyzed_at));
+
+            setSelectedDate(latestDate);
+          }
+
+          setRawData(transformedData);
+        } else {
+          throw new Error("Invalid analysis data format");
+        }
+      } catch (err) {
+        if (mounted) {
+          setError("Failed to fetch analysis data");
+          console.error("Error:", err);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchAnalysisData();
+    return () => {
+      mounted = false;
+    };
+  }, [selectedDate, transformData]);
+
+  // Apply filters whenever dependencies change
+  useEffect(() => {
+    setFilteredData(applyFilters(rawData));
+  }, [rawData, selectedDate, selectedStatuses, applyFilters]);
 
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
       setError(null);
-
       await client.post("/api/trading-data/refresh");
-
-      await fetchAnalysisData();
+      const { data } = await client.get("/api/trading-data");
+      if (Array.isArray(data)) {
+        setRawData(transformData(data));
+      }
     } catch (err) {
       setError("Failed to refresh analysis data");
       console.error("Error:", err);
@@ -156,23 +187,21 @@ const AnalysisTable = () => {
     }
   };
 
-  const handleDateChange = (newDate) => {
-    setSelectedDate(newDate);
-    setFilteredData(applyFilters(rawData));
-  };
-
-  const handleStatusChange = (event) => {
-    setSelectedStatuses(event.target.value);
-    setFilteredData(applyFilters(rawData));
-  };
-
-  useEffect(() => {
-    fetchAnalysisData();
-  }, [fetchAnalysisData]);
-
-  useEffect(() => {
-    setFilteredData(applyFilters(rawData));
-  }, [rawData, applyFilters]);
+  const columns = useMemo(
+    () => [
+      "Symbol",
+      "Current Price",
+      "Stock Spread",
+      "Strike Price",
+      "Option Mid",
+      "Mid %",
+      "Expiration",
+      "Days to Earnings",
+      "Status",
+      "Analyzed At",
+    ],
+    []
+  );
 
   if (loading) {
     return (
@@ -200,19 +229,6 @@ const AnalysisTable = () => {
     );
   }
 
-  const columns = [
-    "Symbol",
-    "Current Price",
-    "Stock Spread",
-    "Strike Price",
-    "Option Mid",
-    "Mid %",
-    "Expiration",
-    "Days to Earnings",
-    "Status",
-    "Analyzed At",
-  ];
-
   return (
     <Box sx={{ marginBottom: 3 }}>
       <Box
@@ -230,7 +246,7 @@ const AnalysisTable = () => {
             <DatePicker
               label="Analysis Date"
               value={selectedDate}
-              onChange={handleDateChange}
+              onChange={setSelectedDate}
               slotProps={{ textField: { size: "small" } }}
               sx={{ minWidth: 200 }}
             />
@@ -242,7 +258,7 @@ const AnalysisTable = () => {
               id="status-filter"
               value={selectedStatuses}
               label="Filter Status"
-              onChange={handleStatusChange}
+              onChange={(e) => setSelectedStatuses(e.target.value)}
             >
               <MenuItem value="all">Show All</MenuItem>
               <MenuItem value="hide_low">Hide Low Status</MenuItem>

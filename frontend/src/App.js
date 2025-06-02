@@ -13,13 +13,8 @@ import AnalysisTable from "./components/AnalysisTable";
 import ValueOverTime from "./components/ValueOverTime";
 import LoginPage from "./components/LoginPage";
 
-// All authentication is handled by the server endpoints
-// Components will get redirected to login if their API calls return 401
-function RequireAuth({ children }) {
-  return children;
-}
-
 function App() {
+  console.log("App component rendered");
   const navigate = useNavigate();
   const location = useLocation();
   const isLoginPage = location.pathname === "/login";
@@ -52,38 +47,10 @@ function App() {
             path="/"
             element={<Navigate to="/account-history" replace />}
           />
-          <Route
-            path="/account-history"
-            element={
-              <RequireAuth>
-                <AccountHistoryTable />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/analysis"
-            element={
-              <RequireAuth>
-                <AnalysisTable />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/value"
-            element={
-              <RequireAuth>
-                <ValueOverTime />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/visual"
-            element={
-              <RequireAuth>
-                <VisualPage />
-              </RequireAuth>
-            }
-          />
+          <Route path="/account-history" element={<AccountHistoryTable />} />
+          <Route path="/analysis" element={<AnalysisTable />} />
+          <Route path="/value" element={<ValueOverTime />} />
+          <Route path="/visual" element={<VisualPage />} />
         </Routes>
       </Box>
     </div>
