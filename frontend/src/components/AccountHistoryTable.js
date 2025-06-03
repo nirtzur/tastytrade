@@ -89,7 +89,15 @@ const AccountHistoryTable = () => {
               const acquisitionPrice = parseFloat(rawAcquisitionPrice) || 0;
               const yahooPrice = parseFloat(rawYahooPrice) || 0;
               const quantity = parseFloat(rawQuantity) || 0;
-              const value = quantity * strikePrice;
+              // Use yahoo price if available, otherwise use the strike price
+              const currentPrice = yahooPrice || strikePrice;
+              // Use the minimum between currentPrice and optionPrice for value calculation
+              const priceForValue = Math.min(
+                currentPrice,
+                optionPrice || Infinity
+              );
+              const value = quantity * priceForValue;
+              // P/L is the difference between current value and acquisition cost
               const profitLoss = value - quantity * acquisitionPrice;
 
               return {
