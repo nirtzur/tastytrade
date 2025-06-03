@@ -228,26 +228,40 @@ const AccountHistoryTable = () => {
           boxShadow: 1,
         }}
       >
-        <Typography variant="h6">
-          Total Value:{" "}
-          {loading ? (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <Typography variant="h6">
+            Total Value:{" "}
+            {loading ? (
+              <Box
+                component="span"
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <CircularProgress size={20} />
+                <Typography component="span" color="text.secondary">
+                  Loading...
+                </Typography>
+              </Box>
+            ) : (
+              `$${totalValue.toFixed(2)}`
+            )}
+          </Typography>
+          {!loading && (
             <Box
-              component="span"
-              sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 1,
-              }}
+              sx={{ display: "flex", gap: 3, pl: 2, color: "text.secondary" }}
             >
-              <CircularProgress size={20} />
-              <Typography component="span" color="text.secondary">
-                Loading...
+              <Typography variant="body2">
+                History: ${historyTotal.toFixed(2)}
+              </Typography>
+              <Typography variant="body2">
+                Positions: ${positionsTotalValue.toFixed(2)}
               </Typography>
             </Box>
-          ) : (
-            `$${totalValue.toFixed(2)}`
           )}
-        </Typography>
+        </Box>
       </Box>
 
       <Box sx={{ flexGrow: 1, overflow: "auto" }}>
