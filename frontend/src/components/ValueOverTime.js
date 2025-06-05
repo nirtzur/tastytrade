@@ -16,8 +16,24 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import client from "../api/client";
 
-// Add isoWeek plugin to get Monday-based weeks
+// Define custom week plugin for Tuesday-based weeks
+const customWeek = (option, dayjsClass) => {
+  const weekStart = 2; // Tuesday
+
+  dayjsClass.prototype.startOfCustomWeek = function () {
+    const day = this.$W;
+    const diff = (day < weekStart ? 7 : 0) + day - weekStart;
+    return this.subtract(diff, "day");
+  };
+
+  dayjsClass.prototype.endOfCustomWeek = function () {
+    return this.startOfCustomWeek().add(6, "day");
+  };
+};
+
+// Add plugins
 dayjs.extend(isoWeek);
+dayjs.extend(customWeek);
 
 const ValueOverTime = () => {
   const [loading, setLoading] = useState(true);
@@ -43,8 +59,8 @@ const ValueOverTime = () => {
       const weeklyValues = new Map();
 
       // Get start and end of weeks
-      const start = startDate.startOf("isoWeek");
-      const end = endDate.endOf("isoWeek");
+      const start = startDate.startOfCustomWeek();
+      const end = endDate.endOfCustomWeek();
       let currentWeek = start;
 
       // Create entries for each week
@@ -82,7 +98,7 @@ const ValueOverTime = () => {
           }
 
           // Update all weeks from this transaction forward
-          currentWeek = txDate.startOf("isoWeek");
+          currentWeek = txDate.startOfCustomWeek();
           while (currentWeek.isBefore(end) || currentWeek.isSame(end, "week")) {
             const weekKey = currentWeek.format("YYYY-MM-DD");
             weeklyValues.set(weekKey, {

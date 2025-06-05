@@ -16,11 +16,13 @@ const createUTCDate = (year, month, day) => {
   return new Date(Date.UTC(year, month, day));
 };
 
-const getNextSunday = (date) => {
+const getNextTuesday = (date) => {
   const utcDate = new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
   );
-  utcDate.setUTCDate(utcDate.getUTCDate() + ((7 - utcDate.getUTCDay()) % 7));
+  // Calculate days until next Tuesday (2 is Tuesday)
+  const daysUntilTuesday = (9 - utcDate.getUTCDay()) % 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + daysUntilTuesday);
   return utcDate;
 };
 
@@ -70,19 +72,19 @@ const VisualPage = () => {
           now.getUTCDate()
         );
 
-        // Move both dates to their next Sundays
-        currentDate = getNextSunday(currentDate);
-        const endDateSunday = getNextSunday(endDateObj);
+        // Move both dates to their next Tuesdays
+        currentDate = getNextTuesday(currentDate);
+        const endDateTuesday = getNextTuesday(endDateObj);
 
-        // Generate a key for every Sunday using UTC
-        while (currentDate <= endDateSunday) {
+        // Generate a key for every Tuesday using UTC
+        while (currentDate <= endDateTuesday) {
           const weekKey = formatUTCDate(currentDate);
           allWeeks[weekKey] = {
             week: weekKey,
             totalValue: 0,
             transactionCount: 0,
           };
-          currentDate.setUTCDate(currentDate.getUTCDate() + 7); // Move to next Sunday
+          currentDate.setUTCDate(currentDate.getUTCDate() + 7); // Move to next Tuesday
         }
 
         // Process and aggregate data by week
@@ -91,8 +93,8 @@ const VisualPage = () => {
             transaction["instrument-type"]?.toLowerCase().includes("option")
           ) {
             const date = new Date(transaction["executed-at"]);
-            const sunday = getNextSunday(date);
-            const weekKey = formatUTCDate(sunday);
+            const tuesday = getNextTuesday(date);
+            const weekKey = formatUTCDate(tuesday);
 
             const numericValue = parseFloat(transaction.value);
             const value =
