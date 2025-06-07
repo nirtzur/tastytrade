@@ -179,6 +179,7 @@ const AccountHistoryTable = () => {
         flexDirection: "column",
       }}
     >
+      {/* Filters and Value Summary */}
       <Box
         sx={{
           display: "flex",
@@ -272,19 +273,7 @@ const AccountHistoryTable = () => {
         </Box>
       </Box>
 
-      <Box sx={{ flexGrow: 1, overflow: "auto" }}>
-        <Typography variant="h6" gutterBottom>
-          Transaction History
-        </Typography>
-        {loading ? (
-          <Box display="flex" justifyContent="center" p={3}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <DataTable columns={columns} data={displayedHistory} />
-        )}
-      </Box>
-
+      {/* Open Positions Table moved below filters and value summary */}
       <Box sx={{ marginBottom: 3 }}>
         <Typography variant="h6" gutterBottom>
           Open Positions
@@ -307,6 +296,20 @@ const AccountHistoryTable = () => {
             ]}
             data={positions}
           />
+        )}
+      </Box>
+
+      {/* Transaction History Table */}
+      <Box sx={{ flexGrow: 1, overflow: "auto" }}>
+        <Typography variant="h6" gutterBottom>
+          Transaction History
+        </Typography>
+        {loading ? (
+          <Box display="flex" justifyContent="center" p={3}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <DataTable columns={columns} data={displayedHistory} />
         )}
       </Box>
     </Box>
