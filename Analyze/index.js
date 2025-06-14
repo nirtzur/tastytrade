@@ -326,7 +326,7 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
       const stockAsk = parseFloat(data.quote?.ask) || null;
       const stockSpread = stockAsk && stockBid ? stockAsk - stockBid : null;
       const strikePrice = parseFloat(data.options?.strike_price) || null;
-      const optionBid = parseFloat(data.options?.bid) || null;
+      const optionBid = parseFloat(data.options?.bid || 0);
       const optionAsk = parseFloat(data.options?.ask) || null;
       const optionMidPrice =
         optionBid && optionAsk ? (optionBid + optionAsk) / 2 : null;
