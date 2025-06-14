@@ -175,7 +175,7 @@ const ValueOverTime = () => {
           mb: 3,
         }}
       >
-        <Typography variant="h6">Value Over Time (Weekly)</Typography>
+        <Typography variant="h6">Weekly Value</Typography>
         <Box sx={{ display: "flex", gap: 2 }}>
           <LocalizationProvider dateAdapter={AdapterDayjs}>
             <DatePicker

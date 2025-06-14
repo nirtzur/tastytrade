@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import DataTable from "./DataTable";
 import {
   Box,
@@ -33,110 +33,110 @@ const AccountHistoryTable = () => {
     localStorage.setItem("accountHistoryStartDate", startDate);
   }, [startDate]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        // Fetch both sets of data in parallel
-        const [historyData, positionsData] = await Promise.all([
-          client.get(
-            `/api/account-history?start-date=${startDate}&end-date=${endDate}`
-          ),
-          client.get("/api/positions"),
-        ]);
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch both sets of data in parallel
+      const [historyData, positionsData] = await Promise.all([
+        client.get(
+          `/api/account-history?start-date=${startDate}&end-date=${endDate}`
+        ),
+        client.get("/api/positions"),
+      ]);
 
-        // Process history data
-        if (Array.isArray(historyData.data)) {
-          const transformedData = historyData.data.map(
-            ({
-              "executed-at": executedAt,
-              "transaction-type": transactionType,
-              action,
-              symbol,
-              quantity,
-              price,
-              value,
-              "value-effect": valueEffect,
-              description,
-            }) => ({
-              Date: new Date(executedAt).toLocaleDateString(),
-              Type: transactionType,
-              Action: action,
+      // Process history data
+      if (Array.isArray(historyData.data)) {
+        const transformedData = historyData.data.map(
+          ({
+            "executed-at": executedAt,
+            "transaction-type": transactionType,
+            action,
+            symbol,
+            quantity,
+            price,
+            value,
+            "value-effect": valueEffect,
+            description,
+          }) => ({
+            Date: new Date(executedAt).toLocaleDateString(),
+            Type: transactionType,
+            Action: action,
+            Symbol: symbol,
+            Quantity: quantity,
+            Price: price,
+            Value: valueEffect === "Debit" ? -value : value,
+            Description: description,
+          })
+        );
+        setHistory(transformedData);
+      }
+
+      // Process positions data
+      if (Array.isArray(positionsData.data)) {
+        const processedPositions = positionsData.data.map(
+          ({
+            symbol,
+            quantity: rawQuantity,
+            "close-price": rawStrikePrice,
+            "option-price": rawOptionPrice,
+            "average-open-price": rawAcquisitionPrice,
+            yahoo_price: rawYahooPrice,
+          }) => {
+            const strikePrice = parseFloat(rawStrikePrice) || 0;
+            const optionPrice = parseFloat(rawOptionPrice) || 0;
+            const acquisitionPrice = parseFloat(rawAcquisitionPrice) || 0;
+            const yahooPrice = parseFloat(rawYahooPrice) || 0;
+            const quantity = parseFloat(rawQuantity) || 0;
+            // Use yahoo price if available, otherwise use the strike price
+            const currentPrice = yahooPrice || strikePrice;
+            // Use the minimum between currentPrice and optionPrice for value calculation
+            const priceForValue = Math.min(
+              currentPrice,
+              optionPrice || Infinity
+            );
+            const value = quantity * priceForValue;
+            // P/L is the difference between current value and acquisition cost
+            const profitLoss = value - quantity * acquisitionPrice;
+
+            return {
               Symbol: symbol,
               Quantity: quantity,
-              Price: price,
-              Value: valueEffect === "Debit" ? -value : value,
-              Description: description,
-            })
-          );
-          setHistory(transformedData);
-        }
-
-        // Process positions data
-        if (Array.isArray(positionsData.data)) {
-          const processedPositions = positionsData.data.map(
-            ({
-              symbol,
-              quantity: rawQuantity,
-              "close-price": rawStrikePrice,
-              "option-price": rawOptionPrice,
-              "average-open-price": rawAcquisitionPrice,
-              yahoo_price: rawYahooPrice,
-            }) => {
-              const strikePrice = parseFloat(rawStrikePrice) || 0;
-              const optionPrice = parseFloat(rawOptionPrice) || 0;
-              const acquisitionPrice = parseFloat(rawAcquisitionPrice) || 0;
-              const yahooPrice = parseFloat(rawYahooPrice) || 0;
-              const quantity = parseFloat(rawQuantity) || 0;
-              // Use yahoo price if available, otherwise use the strike price
-              const currentPrice = yahooPrice || strikePrice;
-              // Use the minimum between currentPrice and optionPrice for value calculation
-              const priceForValue = Math.min(
-                currentPrice,
-                optionPrice || Infinity
-              );
-              const value = quantity * priceForValue;
-              // P/L is the difference between current value and acquisition cost
-              const profitLoss = value - quantity * acquisitionPrice;
-
-              return {
-                Symbol: symbol,
-                Quantity: quantity,
-                "Strike Price": `$${strikePrice.toFixed(2)}`,
-                "Option Price": optionPrice
-                  ? `$${optionPrice.toFixed(2)}`
-                  : "N/A",
-                "Acquisition Price": `$${acquisitionPrice.toFixed(2)}`,
-                "Yahoo Price": yahooPrice ? `$${yahooPrice.toFixed(2)}` : "N/A",
-                Value: `$${value.toFixed(2)}`,
-                "P/L": `$${profitLoss.toFixed(2)}`,
-              };
-            }
-          );
-          setPositions(processedPositions);
-          const totalValue = processedPositions.reduce((sum, position) => {
-            return sum + (parseFloat(position.Value.replace("$", "")) || 0);
-          }, 0);
-          setPositionsTotalValue(totalValue);
-        }
-      } catch (err) {
-        setError("Failed to fetch data");
-        console.error("Error:", err);
-      } finally {
-        setLoading(false);
+              "Strike Price": `$${strikePrice.toFixed(2)}`,
+              "Option Price": optionPrice
+                ? `$${optionPrice.toFixed(2)}`
+                : "N/A",
+              "Acquisition Price": `$${acquisitionPrice.toFixed(2)}`,
+              "Yahoo Price": yahooPrice ? `$${yahooPrice.toFixed(2)}` : "N/A",
+              Value: `$${value.toFixed(2)}`,
+              "P/L": `$${profitLoss.toFixed(2)}`,
+            };
+          }
+        );
+        setPositions(processedPositions);
+        const totalValue = processedPositions.reduce((sum, position) => {
+          return sum + (parseFloat(position.Value.replace("$", "")) || 0);
+        }, 0);
+        setPositionsTotalValue(totalValue);
       }
-    };
-
-    fetchData();
+    } catch (err) {
+      setError("Failed to fetch data");
+      console.error("Error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [startDate, endDate]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleSync = async () => {
     setSyncing(true);
     try {
       await client.post("/api/account-history/sync");
-      // Refetch data after sync by updating endDate
-      setEndDate(new Date().toISOString().split("T")[0]);
+      // Automatically refresh the transaction data after successful sync
+      await fetchData();
     } catch (err) {
       setError("Failed to sync transactions");
       console.error("Error:", err);

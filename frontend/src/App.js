@@ -36,9 +36,9 @@ function App() {
           >
             <Tab label="Account History" value="/account-history" />
             <Tab label="Analysis" value="/analysis" />
-            <Tab label="Value Over Time" value="/value" />
+            <Tab label="Weekly Value" value="/value" />
             <Tab label="Balance" value="/balance" />
-            <Tab label="Visual" value="/visual" />
+            <Tab label="Weekly Options" value="/visual" />
           </Tabs>
         </AppBar>
       )}
