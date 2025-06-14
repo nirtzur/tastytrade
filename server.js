@@ -7,7 +7,10 @@ const {
   getAccountHistory,
   getPositions,
 } = require("./Analyze/tastytrade");
-const { processSymbols } = require("./Analyze/index");
+const {
+  processSymbols,
+  processSymbolsWithProgress,
+} = require("./Analyze/index");
 const { getSP500Symbols } = require("./Analyze/sp500");
 const { getSectorETFs } = require("./Analyze/etfs");
 const sequelize = require("./models");
@@ -85,7 +88,12 @@ async function syncTransactions() {
 }
 
 const app = express();
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Load environment variables
@@ -338,9 +346,68 @@ app.get("/api/positions", authenticate, async (req, res) => {
   }
 });
 
-app.post("/api/trading-data/refresh", authenticate, async (req, res) => {
+app.get("/api/trading-data/refresh", authenticate, async (req, res) => {
   try {
     logInfo("Starting analysis refresh");
+    // Get symbols
+    const sp500Symbols = await getSP500Symbols();
+    const etfSymbols = getSectorETFs();
+    const symbolsToProcess = [...sp500Symbols, ...etfSymbols];
+
+    logInfo(`Processing ${symbolsToProcess.length} symbols...`);
+
+    // Set up Server-Sent Events for progress updates
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "http://localhost:3000",
+      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+
+    // Send initial progress
+    res.write(
+      `data: ${JSON.stringify({
+        type: "start",
+        total: symbolsToProcess.length,
+        message: "Starting analysis...",
+      })}\n\n`
+    );
+
+    // Process symbols with progress updates
+    await processSymbolsWithProgress(
+      symbolsToProcess,
+      sessionToken,
+      (progress) => {
+        res.write(`data: ${JSON.stringify(progress)}\n\n`);
+      }
+    );
+
+    // Send completion message
+    res.write(
+      `data: ${JSON.stringify({
+        type: "complete",
+        message: "Analysis refresh complete",
+      })}\n\n`
+    );
+
+    res.end();
+  } catch (error) {
+    logError("Error refreshing analysis:", error);
+    res.write(
+      `data: ${JSON.stringify({
+        type: "error",
+        message: error.message,
+      })}\n\n`
+    );
+    res.end();
+  }
+});
+
+app.post("/api/trading-data/refresh", authenticate, async (req, res) => {
+  try {
+    logInfo("Starting analysis refresh (legacy endpoint)");
     // Get symbols
     const sp500Symbols = await getSP500Symbols();
     const etfSymbols = getSectorETFs();

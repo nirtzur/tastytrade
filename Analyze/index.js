@@ -300,6 +300,99 @@ async function main() {
   }
 }
 
+// Process symbols with progress callback
+async function processSymbolsWithProgress(symbols, token, progressCallback) {
+  const results = [];
+  const today = new Date();
+  const expirationDate = new Date();
+  expirationDate.setDate(today.getDate() + DAYS_TO_EXPIRATION);
+
+  for (let i = 0; i < symbols.length; i++) {
+    const symbol = symbols[i];
+
+    // Send progress update
+    progressCallback({
+      type: "progress",
+      current: i + 1,
+      total: symbols.length,
+      symbol: symbol,
+      message: `Processing ${symbol}... (${i + 1}/${symbols.length})`,
+    });
+
+    const data = await fetchSymbolData(symbol, token);
+    if (data) {
+      const currentPrice = parseFloat(data.quote?.last) || null;
+      const stockBid = parseFloat(data.quote?.bid) || null;
+      const stockAsk = parseFloat(data.quote?.ask) || null;
+      const stockSpread = stockAsk && stockBid ? stockAsk - stockBid : null;
+      const strikePrice = parseFloat(data.options?.strike_price) || null;
+      const optionBid = parseFloat(data.options?.bid) || null;
+      const optionAsk = parseFloat(data.options?.ask) || null;
+      const optionMidPrice =
+        optionBid && optionAsk ? (optionBid + optionAsk) / 2 : null;
+      const optionMidPercent =
+        strikePrice && optionMidPrice
+          ? (optionMidPrice / strikePrice) * 100
+          : null;
+      const optionExpirationDate = data.options["expiration-date"]
+        ? new Date(data.options["expiration-date"])
+        : null;
+
+      // Prepare analysis result object (same as original processSymbols)
+      const analysisResult = {
+        symbol,
+        current_price: currentPrice,
+        stock_bid: stockBid,
+        stock_ask: stockAsk,
+        stock_spread: stockSpread,
+        option_strike_price: strikePrice,
+        option_bid: optionBid,
+        option_ask: optionAsk,
+        option_mid_price: optionMidPrice,
+        option_mid_percent: optionMidPercent,
+        option_expiration_date: optionExpirationDate,
+        days_to_earnings: data.daysToEarnings,
+        analyzed_at: today,
+        status: "ANALYZING",
+      };
+
+      // Apply the same logic as original processSymbols for status determination
+      if (currentPrice && currentPrice < MIN_STOCK_PRICE) {
+        analysisResult.status = "LOW_STOCK_PRICE";
+      } else if (stockSpread && stockSpread > MAX_STOCK_SPREAD) {
+        analysisResult.status = "HIGH_SPREAD";
+      } else if (optionMidPercent && optionMidPercent < MIN_MID_PERCENT) {
+        analysisResult.status = "LOW_MID_PERCENT";
+      } else if (
+        currentPrice &&
+        stockSpread &&
+        optionMidPercent &&
+        currentPrice >= MIN_STOCK_PRICE &&
+        stockSpread <= MAX_STOCK_SPREAD &&
+        optionMidPercent >= MIN_MID_PERCENT
+      ) {
+        analysisResult.status = "READY";
+      }
+
+      results.push(analysisResult);
+
+      // Save to database
+      try {
+        await AnalysisResult.upsert(analysisResult, {
+          where: { symbol },
+        });
+      } catch (dbError) {
+        console.error(`Error saving ${symbol} to database:`, dbError);
+      }
+    }
+
+    // Add small delay to prevent overwhelming the API
+    await sleep(100);
+  }
+
+  return results;
+}
+
 if (require.main === module) {
   main();
 }
@@ -307,5 +400,6 @@ if (require.main === module) {
 module.exports = {
   initializeTastytrade,
   processSymbols,
+  processSymbolsWithProgress,
   getAccountHistory,
 };

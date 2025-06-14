@@ -15,7 +15,6 @@ import BalanceChart from "./components/BalanceChart";
 import LoginPage from "./components/LoginPage";
 
 function App() {
-  console.log("App component rendered");
   const navigate = useNavigate();
   const location = useLocation();
   const isLoginPage = location.pathname === "/login";

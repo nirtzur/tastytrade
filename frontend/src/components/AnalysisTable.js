@@ -10,6 +10,7 @@ import {
   Select,
   MenuItem,
   Link,
+  LinearProgress,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -30,6 +31,7 @@ const AnalysisTable = () => {
   const [error, setError] = useState(null);
   const [selectedStatuses, setSelectedStatuses] = useState("hide_low");
   const [selectedDate, setSelectedDate] = useState(null);
+  const [progressInfo, setProgressInfo] = useState(null);
 
   const openYahooFinance = useCallback((symbol) => {
     window.open(
@@ -174,16 +176,78 @@ const AnalysisTable = () => {
     try {
       setRefreshing(true);
       setError(null);
-      await client.post("/api/trading-data/refresh");
-      const { data } = await client.get("/api/trading-data");
-      if (Array.isArray(data)) {
-        setRawData(transformData(data));
-      }
+      setProgressInfo(null);
+
+      // Use EventSource for Server-Sent Events
+      const eventSource = new EventSource(
+        `${
+          process.env.REACT_APP_API_URL || "http://localhost:3001"
+        }/api/trading-data/refresh`,
+        {
+          withCredentials: true,
+        }
+      );
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        switch (data.type) {
+          case "start":
+            setProgressInfo({
+              current: 0,
+              total: data.total,
+              symbol: "",
+              message: data.message,
+            });
+            break;
+          case "progress":
+            setProgressInfo({
+              current: data.current,
+              total: data.total,
+              symbol: data.symbol,
+              message: data.message,
+            });
+            break;
+          case "complete":
+            setProgressInfo(null);
+            // Fetch updated data
+            client.get("/api/trading-data").then(({ data }) => {
+              if (Array.isArray(data)) {
+                setRawData(transformData(data));
+              }
+            });
+            break;
+          case "error":
+            setError("Failed to refresh analysis data: " + data.message);
+            setProgressInfo(null);
+            break;
+          default:
+            console.log("Unknown SSE message type:", data.type);
+            break;
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error("SSE Error:", error);
+        setError("Connection error during refresh");
+        setProgressInfo(null);
+        eventSource.close();
+        setRefreshing(false);
+      };
+
+      // Close event source when refresh completes
+      eventSource.addEventListener("message", (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === "complete" || data.type === "error") {
+          eventSource.close();
+          setRefreshing(false);
+        }
+      });
     } catch (err) {
-      setError("Failed to refresh analysis data");
+      setError("Failed to start refresh");
       console.error("Error:", err);
-    } finally {
       setRefreshing(false);
+      setProgressInfo(null);
     }
   };
 
@@ -282,6 +346,44 @@ const AnalysisTable = () => {
           </Button>
         </Box>
       </Box>
+
+      {/* Progress Information */}
+      {progressInfo && (
+        <Box
+          sx={{
+            mb: 3,
+            p: 2,
+            bgcolor: "background.paper",
+            border: 1,
+            borderColor: "divider",
+            borderRadius: 1,
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Analysis Progress
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {progressInfo.message}
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <Box sx={{ width: "100%" }}>
+              <LinearProgress
+                variant="determinate"
+                value={(progressInfo.current / progressInfo.total) * 100}
+                sx={{ height: 8, borderRadius: 4 }}
+              />
+            </Box>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ minWidth: "80px" }}
+            >
+              {progressInfo.current}/{progressInfo.total}
+            </Typography>
+          </Box>
+        </Box>
+      )}
+
       <DataTable columns={columns} data={filteredData} />
     </Box>
   );
