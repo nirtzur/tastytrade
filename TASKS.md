@@ -86,13 +86,13 @@
     ✓ Fix end date filtering to include transactions from the entire end date
 
 11. Progress Indicator for Analysis Refresh
-    - Add Server-Sent Events (SSE) endpoint for progress updates
-    - Modify processSymbols to report progress
-    - Update frontend to show progress bar during refresh
-    - Show current symbol being processed
-    - Display percentage complete
+    ✓ Add Server-Sent Events (SSE) endpoint for progress updates
+    ✓ Modify processSymbols to report progress
+    ✓ Update frontend to show progress bar during refresh
+    ✓ Show current symbol being processed
+    ✓ Display percentage complete
     - Add estimated time remaining
-    - Handle connection errors gracefully
+    ✓ Handle connection errors gracefully
     - Add cancel operation capability
     - Persist progress state for page reloads
-    - Add visual feedback for completed/failed operations
+    ✓ Add visual feedback for completed/failed operations
