@@ -12,6 +12,7 @@ import VisualPage from "./components/VisualPage";
 import AnalysisTable from "./components/AnalysisTable";
 import ValueOverTime from "./components/ValueOverTime";
 import BalanceChart from "./components/BalanceChart";
+import Positions from "./components/Positions";
 import LoginPage from "./components/LoginPage";
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
             <Tab label="Weekly Value" value="/value" />
             <Tab label="Balance" value="/balance" />
             <Tab label="Weekly Options" value="/visual" />
+            <Tab label="Positions" value="/positions" />
           </Tabs>
         </AppBar>
       )}
@@ -53,6 +55,7 @@ function App() {
           <Route path="/value" element={<ValueOverTime />} />
           <Route path="/balance" element={<BalanceChart />} />
           <Route path="/visual" element={<VisualPage />} />
+          <Route path="/positions" element={<Positions />} />
         </Routes>
       </Box>
     </div>

@@ -531,3 +531,184 @@ sequelize
   .catch((error) => {
     logError("Unable to connect to the database:", error);
   });
+
+// Constants
+const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
+
+function isOpeningTransaction(tx) {
+  if (tx.instrument_type === "Equity") {
+    return tx.action === "Buy to Open" || tx.action === "Buy";
+  } else if (tx.instrument_type === "Equity Option") {
+    return tx.action === "Sell to Open";
+  }
+  return false;
+}
+
+app.get("/api/positions/aggregated", authenticate, async (req, res) => {
+  try {
+    logInfo("Fetching aggregated positions from transaction history");
+
+    // Get all transactions ordered by execution date
+    const transactions = await TransactionHistory.findAll({
+      order: [["executed_at", "ASC"]],
+      raw: true,
+    });
+
+    // Group transactions by symbol and calculate position details
+    const positionsBySymbol = {};
+
+    transactions.forEach((tx) => {
+      if (!tx.symbol) return;
+
+      const symbol = tx.symbol.split(" ")[0];
+      positionsBySymbol[symbol] ??= [];
+
+      let currentPosition = positionsBySymbol[symbol].find((pos) => pos.isOpen);
+
+      if (!currentPosition) {
+        // Create a new position
+        currentPosition = {
+          symbol,
+          totalShares: 0,
+          totalCost: 0,
+          totalProceeds: 0,
+          avgCostBasis: 0,
+          transactions: [],
+          isOpen: true,
+          totalOptionPremium: 0,
+          totalOptionTransactions: 0,
+          totalOptionContracts: 0, // Track net option contracts (sold - bought)
+          firstTransactionDate: tx.executed_at,
+          lastTransactionDate: tx.executed_at,
+          equityTransactions: 0,
+          totalSharesBought: 0,
+          totalSharesSold: 0,
+        };
+        positionsBySymbol[symbol].push(currentPosition);
+      }
+
+      currentPosition.transactions.push(tx);
+      currentPosition.lastTransactionDate = tx.executed_at;
+
+      // Extract common values
+      const quantity = Math.abs(tx.quantity || 0);
+      const value = Math.abs(tx.value || 0);
+
+      if (tx.instrument_type === "Equity") {
+        currentPosition.equityTransactions++;
+
+        if (isOpeningTransaction(tx)) {
+          currentPosition.totalShares += quantity;
+          currentPosition.totalSharesBought += quantity;
+          currentPosition.totalCost += value;
+        } else {
+          currentPosition.totalShares -= quantity;
+          currentPosition.totalSharesSold += quantity;
+          currentPosition.totalProceeds += value;
+        }
+      }
+      // Handle equity option transactions for this symbol
+      else if (tx.instrument_type === "Equity Option") {
+        currentPosition.totalOptionTransactions++;
+
+        if (tx.value_effect === "Credit") {
+          currentPosition.totalOptionPremium += value;
+        } else if (tx.value_effect === "Debit") {
+          currentPosition.totalOptionPremium -= value;
+        }
+
+        // Track net option contracts (sold options are positive, bought options are negative)
+        if (isOpeningTransaction(tx)) {
+          // Sell to Open
+          currentPosition.totalOptionContracts += quantity;
+        } else {
+          // Buy to Close
+          currentPosition.totalOptionContracts -= quantity;
+        }
+      }
+
+      // Update position status - position is active if either shares > 0 OR option contracts > 0
+      if (
+        currentPosition.totalShares > 0 ||
+        currentPosition.totalOptionContracts > 0
+      ) {
+        if (currentPosition.totalSharesBought > 0) {
+          currentPosition.avgCostBasis =
+            currentPosition.totalCost / currentPosition.totalSharesBought;
+        }
+        currentPosition.isOpen = true;
+      } else {
+        // Only mark position as inactive when BOTH equity and options are fully closed
+        currentPosition.isOpen = false;
+      }
+    });
+
+    // Convert to array and add additional calculations
+    const aggregatedPositions = Object.values(positionsBySymbol)
+      .flat() // Flatten the arrays of positions for each symbol
+      .filter(
+        (position) =>
+          position.transactions.length > 0 &&
+          position.totalOptionTransactions > 0
+      )
+      .map((position) => {
+        // Calculate realized P&L
+        let realizedPL = 0;
+        if (position.totalShares <= 0 && position.totalOptionContracts <= 0) {
+          // Position is fully closed - calculate P&L on all shares sold
+          realizedPL = position.totalProceeds - position.totalCost;
+        } else {
+          // Position is still open - calculate P&L only on shares sold
+          const avgCostPerShare =
+            position.totalSharesBought > 0
+              ? position.totalCost / position.totalSharesBought
+              : 0;
+          realizedPL =
+            position.totalProceeds - position.totalSharesSold * avgCostPerShare;
+        }
+
+        const totalReturn = position.totalOptionPremium + realizedPL;
+
+        // Calculate return percentage
+        let returnPercentage = 0;
+        if (position.totalCost > 0) {
+          if (position.isOpen) {
+            // For active positions: Total Return / Total Cost * 100
+            returnPercentage = (totalReturn / position.totalCost) * 100;
+          } else {
+            // For closed positions: (Total Proceeds + Option Premium) / Total Cost - 1) * 100
+            returnPercentage =
+              ((position.totalProceeds + position.totalOptionPremium) /
+                position.totalCost -
+                1) *
+              100;
+          }
+        }
+
+        return {
+          ...position,
+          totalTransactions: position.transactions.length,
+          realizedPL,
+          totalReturn,
+          returnPercentage,
+          daysHeld: Math.ceil(
+            (new Date(position.lastTransactionDate) -
+              new Date(position.firstTransactionDate)) /
+              MILLISECONDS_PER_DAY
+          ),
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.firstTransactionDate) - new Date(a.firstTransactionDate)
+      );
+
+    res.json(aggregatedPositions);
+  } catch (error) {
+    logError("Error fetching aggregated positions:", error);
+    res.status(500).json({
+      error: "Failed to fetch aggregated positions",
+      message: error.message,
+    });
+  }
+});
