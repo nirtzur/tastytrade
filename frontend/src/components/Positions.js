@@ -264,7 +264,43 @@ function Positions() {
                       {formatCurrency(position.totalCost)}
                     </TableCell>
                     <TableCell align="right">
-                      {formatCurrency(position.totalProceeds)}
+                      <div>
+                        <Typography variant="body2" fontWeight="bold">
+                          {formatCurrency(position.totalProceeds)}
+                        </Typography>
+                        {position.isOpen && position.currentMarketValue > 0 && (
+                          <div>
+                            <Typography variant="caption" color="textSecondary">
+                              Current:{" "}
+                              {formatCurrency(position.currentMarketValue)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              display="block"
+                              color="textSecondary"
+                            >
+                              @{" "}
+                              {formatCurrency(
+                                position.effectivePrice || position.currentPrice
+                              )}
+                              /share
+                              {position.strikePrice &&
+                                position.currentPrice >
+                                  position.strikePrice && (
+                                  <span
+                                    style={{
+                                      color: "orange",
+                                      fontWeight: "bold",
+                                    }}
+                                  >
+                                    {" "}
+                                    (capped at strike ${position.strikePrice})
+                                  </span>
+                                )}
+                            </Typography>
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell align="right">
                       <Chip

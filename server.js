@@ -643,14 +643,39 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
       }
     });
 
-    // Convert to array and add additional calculations
-    const aggregatedPositions = Object.values(positionsBySymbol)
+    // Convert to array and filter positions
+    const positionsArray = Object.values(positionsBySymbol)
       .flat() // Flatten the arrays of positions for each symbol
       .filter(
         (position) =>
           position.transactions.length > 0 &&
           position.totalOptionTransactions > 0
-      )
+      );
+
+    // Fetch Yahoo Finance prices for open positions
+    const openPositions = positionsArray.filter((position) => position.isOpen);
+    const yahooFinancePrices = {};
+
+    if (openPositions.length > 0) {
+      await Promise.all(
+        openPositions.map(async (position) => {
+          try {
+            const quote = await yahooFinance.quote(position.symbol);
+            yahooFinancePrices[position.symbol] =
+              quote.regularMarketPrice || null;
+          } catch (error) {
+            logError(
+              `Error fetching Yahoo price for ${position.symbol}:`,
+              error
+            );
+            yahooFinancePrices[position.symbol] = null;
+          }
+        })
+      );
+    }
+
+    // Add additional calculations with Yahoo Finance data
+    const aggregatedPositions = positionsArray
       .map((position) => {
         // Calculate realized P&L
         let realizedPL = 0;
@@ -667,13 +692,61 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
             position.totalProceeds - position.totalSharesSold * avgCostPerShare;
         }
 
-        const totalReturn = position.totalOptionPremium + realizedPL;
+        // Extract strike price from option transactions
+        let strikePrice = null;
+        for (const tx of position.transactions) {
+          if (tx.instrument_type === "Equity Option" && tx.symbol) {
+            // Option symbols typically end with 8 digits for TastyTrade format
+            // Example: "AAPL  240621C00200000" where the last 8 digits represent strike price
+            const match = tx.symbol.match(/(\d{8})$/);
+            if (match) {
+              const strikePart = match[1];
+              // Last 8 digits: first digit is call/put indicator, last 7 are strike * 1000
+              const strikeValue = parseFloat(strikePart.substring(1)) / 1000;
+              if (strikeValue > 0) {
+                strikePrice = strikeValue;
+                break; // Use the first valid strike price found
+              }
+            }
+          }
+        }
+
+        // Get current market value for open positions
+        const currentPrice = yahooFinancePrices[position.symbol];
+        let effectivePrice = currentPrice;
+
+        // If yahoo price is higher than strike price, cap it at strike price (for covered calls)
+        if (currentPrice && strikePrice && currentPrice > strikePrice) {
+          effectivePrice = strikePrice;
+        }
+
+        const currentMarketValue =
+          position.isOpen && effectivePrice && position.totalShares > 0
+            ? effectivePrice * position.totalShares
+            : 0;
+
+        // Calculate total return
+        let totalReturn;
+        if (position.isOpen && currentMarketValue > 0) {
+          // For open positions: Total proceeds + current market value + option premium - total cost
+          totalReturn =
+            position.totalProceeds +
+            currentMarketValue +
+            position.totalOptionPremium -
+            position.totalCost;
+        } else {
+          // For closed positions: option premium + realized P&L
+          totalReturn = position.totalOptionPremium + realizedPL;
+        }
 
         // Calculate return percentage
         let returnPercentage = 0;
         if (position.totalCost > 0) {
-          if (position.isOpen) {
-            // For active positions: Total Return / Total Cost * 100
+          if (position.isOpen && currentMarketValue > 0) {
+            // For active positions with current market value
+            returnPercentage = (totalReturn / position.totalCost) * 100;
+          } else if (position.isOpen) {
+            // For active positions without current market value (fallback)
             returnPercentage = (totalReturn / position.totalCost) * 100;
           } else {
             // For closed positions: (Total Proceeds + Option Premium) / Total Cost - 1) * 100
@@ -691,6 +764,10 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
           realizedPL,
           totalReturn,
           returnPercentage,
+          currentPrice,
+          currentMarketValue,
+          strikePrice,
+          effectivePrice,
           daysHeld: Math.ceil(
             (new Date(position.lastTransactionDate) -
               new Date(position.firstTransactionDate)) /
