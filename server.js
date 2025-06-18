@@ -692,20 +692,31 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
             position.totalProceeds - position.totalSharesSold * avgCostPerShare;
         }
 
-        // Extract strike price from option transactions
+        // Extract strike price from the latest 'Sell to Open' option transaction
         let strikePrice = null;
+        let latestSellToOpenDate = null;
+
         for (const tx of position.transactions) {
-          if (tx.instrument_type === "Equity Option" && tx.symbol) {
-            // Option symbols typically end with 8 digits for TastyTrade format
-            // Example: "AAPL  240621C00200000" where the last 8 digits represent strike price
-            const match = tx.symbol.match(/(\d{8})$/);
-            if (match) {
-              const strikePart = match[1];
-              // Last 8 digits: first digit is call/put indicator, last 7 are strike * 1000
-              const strikeValue = parseFloat(strikePart.substring(1)) / 1000;
-              if (strikeValue > 0) {
-                strikePrice = strikeValue;
-                break; // Use the first valid strike price found
+          if (
+            tx.instrument_type === "Equity Option" &&
+            tx.action === "Sell to Open" &&
+            tx.symbol
+          ) {
+            const txDate = new Date(tx.executed_at);
+
+            // Only process if this is the latest 'Sell to Open' transaction
+            if (!latestSellToOpenDate || txDate > latestSellToOpenDate) {
+              // Option symbols typically end with 8 digits for TastyTrade format
+              // Example: "AAPL  240621C00200000" where the last 8 digits represent strike price
+              const match = tx.symbol.match(/(\d{8})$/);
+              if (match) {
+                const strikePart = match[1];
+                // Last 8 digits: first digit is call/put indicator, last 7 are strike * 1000
+                const strikeValue = parseFloat(strikePart.substring(1)) / 1000;
+                if (strikeValue > 0) {
+                  strikePrice = strikeValue;
+                  latestSellToOpenDate = txDate;
+                }
               }
             }
           }
@@ -769,7 +780,9 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
           strikePrice,
           effectivePrice,
           daysHeld: Math.ceil(
-            (new Date(position.lastTransactionDate) -
+            (new Date(
+              position.isOpen ? Date.now() : position.lastTransactionDate
+            ) -
               new Date(position.firstTransactionDate)) /
               MILLISECONDS_PER_DAY
           ),
