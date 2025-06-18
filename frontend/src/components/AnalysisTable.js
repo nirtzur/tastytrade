@@ -29,7 +29,7 @@ const AnalysisTable = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedStatuses, setSelectedStatuses] = useState("hide_low");
+  const [selectedStatuses, setSelectedStatuses] = useState("READY");
   const [selectedDate, setSelectedDate] = useState(null);
   const [progressInfo, setProgressInfo] = useState(null);
 
