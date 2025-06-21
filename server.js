@@ -16,6 +16,7 @@ const { getSectorETFs } = require("./Analyze/etfs");
 const sequelize = require("./models");
 const TransactionHistory = require("./models/TransactionHistory");
 const AnalysisResult = require("./models/AnalysisResult");
+const ProgressState = require("./models/ProgressState");
 
 // Keep track of last sync time
 async function getLastSyncTime() {
@@ -84,6 +85,75 @@ async function syncTransactions() {
   } catch (error) {
     logError("Error syncing transactions:", error);
     throw error;
+  }
+}
+
+// Progress state management functions
+async function saveProgressState(sessionId, progressData) {
+  try {
+    await ProgressState.upsert({
+      session_id: sessionId,
+      type: progressData.type,
+      current: progressData.current || 0,
+      total: progressData.total || 0,
+      symbol: progressData.symbol || null,
+      message: progressData.message || null,
+      updated_at: new Date(),
+      completed_at:
+        progressData.type === "complete" || progressData.type === "error"
+          ? new Date()
+          : null,
+      error_message:
+        progressData.type === "error" ? progressData.message : null,
+    });
+  } catch (error) {
+    logError("Error saving progress state:", error);
+  }
+}
+
+async function getProgressState(sessionId) {
+  try {
+    const progress = await ProgressState.findOne({
+      where: { session_id: sessionId },
+      order: [["updated_at", "DESC"]],
+    });
+
+    if (!progress) return null;
+
+    // Check if progress is recent (within last hour) and not completed
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    if (
+      progress.updated_at < oneHourAgo ||
+      progress.type === "complete" ||
+      progress.type === "error"
+    ) {
+      // Clean up old/completed progress
+      await progress.destroy();
+      return null;
+    }
+
+    return {
+      type: progress.type,
+      current: progress.current,
+      total: progress.total,
+      symbol: progress.symbol,
+      message: progress.message,
+      started_at: progress.started_at,
+      updated_at: progress.updated_at,
+    };
+  } catch (error) {
+    logError("Error getting progress state:", error);
+    return null;
+  }
+}
+
+async function clearProgressState(sessionId) {
+  try {
+    await ProgressState.destroy({
+      where: { session_id: sessionId },
+    });
+  } catch (error) {
+    logError("Error clearing progress state:", error);
   }
 }
 
@@ -303,6 +373,51 @@ app.get("/api/trading-data", authenticate, async (req, res) => {
   }
 });
 
+// Get current progress state
+app.get("/api/progress-state", authenticate, async (req, res) => {
+  try {
+    // Look for any active progress state (we'll use a simple approach since we typically only have one analysis running)
+    const activeProgress = await ProgressState.findOne({
+      where: {
+        type: {
+          [sequelize.Sequelize.Op.in]: ["start", "progress"],
+        },
+      },
+      order: [["updated_at", "DESC"]],
+    });
+
+    if (activeProgress) {
+      // Check if progress is recent (within last hour)
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      if (activeProgress.updated_at >= oneHourAgo) {
+        res.json({
+          hasProgress: true,
+          sessionId: activeProgress.session_id,
+          type: activeProgress.type,
+          current: activeProgress.current,
+          total: activeProgress.total,
+          symbol: activeProgress.symbol,
+          message: activeProgress.message,
+          started_at: activeProgress.started_at,
+          updated_at: activeProgress.updated_at,
+        });
+        return;
+      } else {
+        // Clean up old progress
+        await activeProgress.destroy();
+      }
+    }
+
+    res.json({ hasProgress: false });
+  } catch (error) {
+    logError("Error getting progress state:", error);
+    res.status(500).json({
+      error: "Failed to get progress state",
+      message: error.message,
+    });
+  }
+});
+
 app.get("/api/positions", authenticate, async (req, res) => {
   try {
     logInfo("Fetching positions");
@@ -349,12 +464,20 @@ app.get("/api/positions", authenticate, async (req, res) => {
 app.get("/api/trading-data/refresh", authenticate, async (req, res) => {
   try {
     logInfo("Starting analysis refresh");
+
+    // Generate unique session ID for this analysis
+    const sessionId = `analysis_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
     // Get symbols
     const sp500Symbols = await getSP500Symbols();
     const etfSymbols = getSectorETFs();
     const symbolsToProcess = [...sp500Symbols, ...etfSymbols];
 
-    logInfo(`Processing ${symbolsToProcess.length} symbols...`);
+    logInfo(
+      `Processing ${symbolsToProcess.length} symbols with session ID: ${sessionId}`
+    );
 
     // Set up Server-Sent Events for progress updates
     res.writeHead(200, {
@@ -366,41 +489,70 @@ app.get("/api/trading-data/refresh", authenticate, async (req, res) => {
       "Access-Control-Allow-Headers": "Content-Type",
     });
 
-    // Send initial progress
-    res.write(
-      `data: ${JSON.stringify({
-        type: "start",
-        total: symbolsToProcess.length,
-        message: "Starting analysis...",
-      })}\n\n`
-    );
+    // Send initial progress with session ID
+    const startProgress = {
+      type: "start",
+      total: symbolsToProcess.length,
+      message: "Starting analysis...",
+      sessionId: sessionId,
+    };
+
+    // Save initial progress state to database
+    await saveProgressState(sessionId, startProgress);
+
+    res.write(`data: ${JSON.stringify(startProgress)}\n\n`);
 
     // Process symbols with progress updates
     await processSymbolsWithProgress(
       symbolsToProcess,
       sessionToken,
-      (progress) => {
-        res.write(`data: ${JSON.stringify(progress)}\n\n`);
+      async (progress) => {
+        // Add session ID to progress
+        const progressWithSession = { ...progress, sessionId };
+
+        // Save progress state to database
+        await saveProgressState(sessionId, progressWithSession);
+
+        res.write(`data: ${JSON.stringify(progressWithSession)}\n\n`);
       }
     );
 
     // Send completion message
-    res.write(
-      `data: ${JSON.stringify({
-        type: "complete",
-        message: "Analysis refresh complete",
-      })}\n\n`
-    );
+    const completeProgress = {
+      type: "complete",
+      message: "Analysis refresh complete",
+      sessionId: sessionId,
+    };
+
+    // Save completion state and clean up
+    await saveProgressState(sessionId, completeProgress);
+    await clearProgressState(sessionId);
+
+    res.write(`data: ${JSON.stringify(completeProgress)}\n\n`);
 
     res.end();
   } catch (error) {
     logError("Error refreshing analysis:", error);
-    res.write(
-      `data: ${JSON.stringify({
-        type: "error",
-        message: error.message,
-      })}\n\n`
-    );
+
+    const errorProgress = {
+      type: "error",
+      message: error.message,
+    };
+
+    // Try to save error state if we have a session ID
+    let currentSessionId;
+    try {
+      currentSessionId = sessionId;
+    } catch (e) {
+      // sessionId might not be defined if error occurred before initialization
+    }
+
+    if (currentSessionId) {
+      errorProgress.sessionId = currentSessionId;
+      await saveProgressState(currentSessionId, errorProgress);
+    }
+
+    res.write(`data: ${JSON.stringify(errorProgress)}\n\n`);
     res.end();
   }
 });
@@ -798,6 +950,115 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
     logError("Error fetching aggregated positions:", error);
     res.status(500).json({
       error: "Failed to fetch aggregated positions",
+      message: error.message,
+    });
+  }
+});
+
+// Monitor existing progress state via SSE
+app.get("/api/progress-monitor", authenticate, async (req, res) => {
+  try {
+    const { sessionId } = req.query;
+
+    logInfo(`Monitoring progress for session: ${sessionId}`);
+
+    // Set up Server-Sent Events for progress monitoring
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "http://localhost:3000",
+      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+
+    // Check if the specified session still has active progress
+    const currentProgress = await getProgressState(sessionId);
+
+    if (!currentProgress) {
+      // No active progress found
+      res.write(
+        `data: ${JSON.stringify({
+          type: "no-progress",
+          message: "Analysis no longer active",
+        })}\n\n`
+      );
+      res.end();
+      return;
+    }
+
+    // Send current progress state
+    res.write(
+      `data: ${JSON.stringify({
+        type: currentProgress.type,
+        current: currentProgress.current,
+        total: currentProgress.total,
+        symbol: currentProgress.symbol,
+        message: currentProgress.message,
+        sessionId: sessionId,
+      })}\n\n`
+    );
+
+    // Set up polling to check for progress updates
+    const checkInterval = setInterval(async () => {
+      try {
+        const updatedProgress = await getProgressState(sessionId);
+
+        if (!updatedProgress) {
+          // Progress completed or removed
+          res.write(
+            `data: ${JSON.stringify({
+              type: "complete",
+              message: "Analysis completed",
+            })}\n\n`
+          );
+          clearInterval(checkInterval);
+          res.end();
+          return;
+        }
+
+        // Send updated progress
+        res.write(
+          `data: ${JSON.stringify({
+            type: updatedProgress.type,
+            current: updatedProgress.current,
+            total: updatedProgress.total,
+            symbol: updatedProgress.symbol,
+            message: updatedProgress.message,
+            sessionId: sessionId,
+          })}\n\n`
+        );
+
+        // If progress is complete or error, end monitoring
+        if (
+          updatedProgress.type === "complete" ||
+          updatedProgress.type === "error"
+        ) {
+          clearInterval(checkInterval);
+          res.end();
+        }
+      } catch (error) {
+        logError("Error monitoring progress:", error);
+        res.write(
+          `data: ${JSON.stringify({
+            type: "error",
+            message: error.message,
+          })}\n\n`
+        );
+        clearInterval(checkInterval);
+        res.end();
+      }
+    }, 1000); // Check every second
+
+    // Clean up on client disconnect
+    req.on("close", () => {
+      clearInterval(checkInterval);
+      logInfo(`Progress monitoring closed for session: ${sessionId}`);
+    });
+  } catch (error) {
+    logError("Error setting up progress monitoring:", error);
+    res.status(500).json({
+      error: "Failed to monitor progress",
       message: error.message,
     });
   }

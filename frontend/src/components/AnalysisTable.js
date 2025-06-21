@@ -167,6 +167,111 @@ const AnalysisTable = () => {
     };
   }, [selectedDate, transformData]);
 
+  // Check for existing progress state on component mount
+  useEffect(() => {
+    let mounted = true;
+
+    const checkExistingProgress = async () => {
+      if (!mounted) return;
+
+      try {
+        const { data } = await client.get("/api/progress-state");
+
+        if (!mounted) return;
+
+        if (data.hasProgress) {
+          console.log("Found existing progress state:", data);
+          setRefreshing(true);
+          setProgressInfo({
+            current: data.current,
+            total: data.total,
+            symbol: data.symbol || "",
+            message: data.message || "Analysis in progress...",
+          });
+
+          // For existing progress, we need to connect to SSE in monitoring mode
+          // We'll create a special endpoint or use a parameter to indicate we're monitoring
+          const monitorEventSource = new EventSource(
+            `${
+              process.env.REACT_APP_API_URL || "http://localhost:3001"
+            }/api/progress-monitor?sessionId=${data.sessionId}`,
+            {
+              withCredentials: true,
+            }
+          );
+
+          monitorEventSource.onmessage = (event) => {
+            const progressData = JSON.parse(event.data);
+
+            switch (progressData.type) {
+              case "progress":
+                setProgressInfo({
+                  current: progressData.current,
+                  total: progressData.total,
+                  symbol: progressData.symbol,
+                  message: progressData.message,
+                });
+                break;
+              case "complete":
+                setProgressInfo(null);
+                setRefreshing(false);
+                // Fetch updated data
+                client.get("/api/trading-data").then(({ data }) => {
+                  if (Array.isArray(data)) {
+                    setRawData(transformData(data));
+                  }
+                });
+                break;
+              case "error":
+                setError("Analysis failed: " + progressData.message);
+                setProgressInfo(null);
+                setRefreshing(false);
+                break;
+              case "no-progress":
+                // Analysis already completed or no longer running
+                setProgressInfo(null);
+                setRefreshing(false);
+                break;
+              default:
+                console.log("Unknown SSE message type:", progressData.type);
+                break;
+            }
+          };
+
+          monitorEventSource.onerror = (error) => {
+            console.error("SSE Error during progress monitoring:", error);
+            // If monitoring fails, clear progress state
+            setProgressInfo(null);
+            setRefreshing(false);
+            monitorEventSource.close();
+          };
+
+          // Close event source when monitoring completes
+          monitorEventSource.addEventListener("message", (event) => {
+            const progressData = JSON.parse(event.data);
+            if (
+              progressData.type === "complete" ||
+              progressData.type === "error" ||
+              progressData.type === "no-progress"
+            ) {
+              monitorEventSource.close();
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Error checking existing progress:", err);
+        // Don't show error to user for this check, just log it
+      }
+    };
+
+    // Only check for existing progress on initial mount
+    checkExistingProgress();
+
+    return () => {
+      mounted = false;
+    };
+  }, [transformData]); // Include transformData dependency
+
   // Apply filters whenever dependencies change
   useEffect(() => {
     setFilteredData(applyFilters(rawData));
