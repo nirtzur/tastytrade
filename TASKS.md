@@ -85,7 +85,15 @@
     ✓ Add button to refresh transaction history without server restart
     ✓ Fix end date filtering to include transactions from the entire end date
 
-11. Progress Indicator for Analysis Refresh
+11. Progress Screen Bug Fixes
+    ✓ Fix issue where page reload restarts analysis instead of showing existing progress
+    ✓ Add API endpoint to check for existing progress state
+    ✓ Implement progress monitoring via SSE without starting new analysis
+    ✓ Add ProgressState database model for persistence
+    ✓ Update frontend logic to distinguish between monitoring vs starting analysis
+    ✓ Implement proper cleanup of completed/expired progress states
+
+12. Progress Indicator for Analysis Refresh
     ✓ Add Server-Sent Events (SSE) endpoint for progress updates
     ✓ Modify processSymbols to report progress
     ✓ Update frontend to show progress bar during refresh
@@ -94,5 +102,8 @@
     - Add estimated time remaining
     ✓ Handle connection errors gracefully
     - Add cancel operation capability
-    - Persist progress state for page reloads
+    ✓ Persist progress state for page reloads
     ✓ Add visual feedback for completed/failed operations
+    ✓ Fix progress screen restart issue on page reload
+    ✓ Add progress monitoring endpoint for existing analysis
+    ✓ Implement database-backed progress state management
