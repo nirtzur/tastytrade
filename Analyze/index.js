@@ -338,6 +338,19 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
         ? new Date(data.options["expiration-date"])
         : null;
 
+      // Get days to earnings (same as original processSymbols)
+      let daysToEarnings = null;
+      if (
+        optionMidPercent &&
+        parseFloat(optionMidPercent) > MIN_MID_PERCENT &&
+        currentPrice &&
+        currentPrice > MIN_STOCK_PRICE &&
+        optionExpirationDate &&
+        optionExpirationDate <= expirationDate
+      ) {
+        daysToEarnings = await getDaysToEarnings(symbol);
+      }
+
       // Prepare analysis result object (same as original processSymbols)
       const analysisResult = {
         symbol,
@@ -351,7 +364,7 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
         option_mid_price: optionMidPrice,
         option_mid_percent: optionMidPercent,
         option_expiration_date: optionExpirationDate,
-        days_to_earnings: data.daysToEarnings,
+        days_to_earnings: daysToEarnings,
         analyzed_at: today,
         status: "ANALYZING",
       };
