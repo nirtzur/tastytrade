@@ -22,6 +22,26 @@ function OpenPositions() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [usdIlsRate, setUsdIlsRate] = useState(null);
+  const [exchangeRateLoading, setExchangeRateLoading] = useState(true);
+
+  const fetchExchangeRate = async () => {
+    try {
+      setExchangeRateLoading(true);
+      // Using a free exchange rate API
+      const response = await fetch(
+        "https://api.exchangerate-api.com/v4/latest/USD"
+      );
+      const data = await response.json();
+      setUsdIlsRate(data.rates.ILS);
+    } catch (err) {
+      console.error("Error fetching exchange rate:", err);
+      // Fallback to approximate rate if API fails
+      setUsdIlsRate(3.7);
+    } finally {
+      setExchangeRateLoading(false);
+    }
+  };
 
   const fetchPositions = async (isRefresh = false) => {
     try {
@@ -47,10 +67,12 @@ function OpenPositions() {
 
   useEffect(() => {
     fetchPositions();
+    fetchExchangeRate();
   }, []);
 
   const handleRefresh = () => {
     fetchPositions(true);
+    fetchExchangeRate();
   };
 
   // Calculate total positions value
@@ -65,6 +87,16 @@ function OpenPositions() {
       currency: "USD",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
+    }).format(value);
+  };
+
+  const formatCurrencyILS = (value) => {
+    if (value === null || value === undefined) return "N/A";
+    return new Intl.NumberFormat("he-IL", {
+      style: "currency",
+      currency: "ILS",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(value);
   };
 
@@ -133,26 +165,46 @@ function OpenPositions() {
           boxShadow: 1,
         }}
       >
-        <Typography variant="h6">
-          Positions Total Value:{" "}
-          {loading ? (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <Typography variant="h6">
+            Positions Total Value:{" "}
+            {loading ? (
+              <Box
+                component="span"
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <CircularProgress size={20} />
+                <Typography component="span" color="text.secondary">
+                  Loading...
+                </Typography>
+              </Box>
+            ) : (
+              formatCurrency(positionsTotalValue)
+            )}
+          </Typography>
+          {!loading && usdIlsRate && (
             <Box
-              component="span"
-              sx={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 1,
-              }}
+              sx={{ display: "flex", gap: 3, pl: 2, color: "text.secondary" }}
             >
-              <CircularProgress size={20} />
-              <Typography component="span" color="text.secondary">
-                Loading...
+              <Typography variant="body2">
+                USD: {formatCurrency(positionsTotalValue)}
+              </Typography>
+              <Typography variant="body2">
+                ILS: {formatCurrencyILS(positionsTotalValue * usdIlsRate)}
+              </Typography>
+              <Typography variant="body2">
+                Exchange Rate: 1 USD = {usdIlsRate?.toFixed(4)} ILS
+                {exchangeRateLoading && (
+                  <CircularProgress size={12} sx={{ ml: 1 }} />
+                )}
               </Typography>
             </Box>
-          ) : (
-            formatCurrency(positionsTotalValue)
           )}
-        </Typography>
+        </Box>
       </Box>
 
       {positions.length === 0 ? (
