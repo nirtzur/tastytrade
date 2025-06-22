@@ -7,7 +7,8 @@ import {
   useLocation,
 } from "react-router-dom";
 import { AppBar, Tabs, Tab, Box } from "@mui/material";
-import AccountHistoryTable from "./components/AccountHistoryTable";
+import TransactionHistory from "./components/TransactionHistory";
+import OpenPositions from "./components/OpenPositions";
 import VisualPage from "./components/VisualPage";
 import AnalysisTable from "./components/AnalysisTable";
 import ValueOverTime from "./components/ValueOverTime";
@@ -35,7 +36,8 @@ function App() {
             indicatorColor="primary"
             textColor="primary"
           >
-            <Tab label="Account History" value="/account-history" />
+            <Tab label="Transaction History" value="/transaction-history" />
+            <Tab label="Open Positions" value="/open-positions" />
             <Tab label="Analysis" value="/analysis" />
             <Tab label="Weekly Value" value="/value" />
             <Tab label="Balance" value="/balance" />
@@ -50,9 +52,10 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route
             path="/"
-            element={<Navigate to="/account-history" replace />}
+            element={<Navigate to="/transaction-history" replace />}
           />
-          <Route path="/account-history" element={<AccountHistoryTable />} />
+          <Route path="/transaction-history" element={<TransactionHistory />} />
+          <Route path="/open-positions" element={<OpenPositions />} />
           <Route path="/analysis" element={<AnalysisTable />} />
           <Route path="/value" element={<ValueOverTime />} />
           <Route path="/balance" element={<BalanceChart />} />
