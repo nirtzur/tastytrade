@@ -13,6 +13,8 @@ import {
   CircularProgress,
   Chip,
   Button,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
 import client from "../api/client";
@@ -22,6 +24,7 @@ function Positions() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [openClosedFilter, setOpenClosedFilter] = useState("open"); // "open" or "closed"
 
   const fetchPositions = async (isRefresh = false) => {
     try {
@@ -107,6 +110,21 @@ function Positions() {
         >
           {refreshing ? "Refreshing..." : "Refresh"}
         </Button>
+      </Box>
+      {/* Filter Toggle */}
+      <Box mb={2}>
+        <ToggleButtonGroup
+          value={openClosedFilter}
+          exclusive
+          onChange={(e, val) => {
+            if (val !== null) setOpenClosedFilter(val);
+          }}
+          size="small"
+        >
+          <ToggleButton value="open">Open Positions</ToggleButton>
+          <ToggleButton value="closed">Closed Positions</ToggleButton>
+          <ToggleButton value="all">All</ToggleButton>
+        </ToggleButtonGroup>
       </Box>
 
       {positions.length === 0 ? (
@@ -223,150 +241,164 @@ function Positions() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {positions.map((position, index) => {
-                const formatDate = (date) => {
-                  return new Date(date).toLocaleDateString();
-                };
+              {positions
+                .filter((position) => {
+                  if (openClosedFilter === "open") return position.isOpen;
+                  if (openClosedFilter === "closed") return !position.isOpen;
+                  return true; // all
+                })
+                .map((position, index) => {
+                  const formatDate = (date) => {
+                    return new Date(date).toLocaleDateString();
+                  };
 
-                const getStatusChip = (isOpen) => {
+                  const getStatusChip = (isOpen) => {
+                    return (
+                      <Chip
+                        label={isOpen ? "Open" : "Closed"}
+                        color={isOpen ? "primary" : "default"}
+                        size="small"
+                      />
+                    );
+                  };
+
                   return (
-                    <Chip
-                      label={isOpen ? "Open" : "Closed"}
-                      color={isOpen ? "primary" : "default"}
-                      size="small"
-                    />
-                  );
-                };
-
-                return (
-                  <TableRow
-                    key={`${position.symbol}-${position.firstTransactionDate}-${index}`}
-                  >
-                    <TableCell>
-                      <Typography variant="body2" fontWeight="bold">
-                        {position.symbol}
-                      </Typography>
-                      <Typography variant="caption" color="textSecondary">
-                        {formatDate(position.firstTransactionDate)} -{" "}
-                        {formatDate(position.lastTransactionDate)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      {getStatusChip(position.isOpen)}
-                    </TableCell>
-                    <TableCell align="right">
-                      {position.totalShares?.toLocaleString() || 0}
-                    </TableCell>
-                    <TableCell align="right">
-                      {formatCurrency(position.avgCostBasis)}
-                    </TableCell>
-                    <TableCell align="right">
-                      {formatCurrency(position.totalCost)}
-                    </TableCell>
-                    <TableCell align="right">
-                      <div>
+                    <TableRow
+                      key={`${position.symbol}-${position.firstTransactionDate}-${index}`}
+                    >
+                      <TableCell>
                         <Typography variant="body2" fontWeight="bold">
-                          {formatCurrency(position.totalProceeds)}
+                          {position.symbol}
                         </Typography>
-                        {position.isOpen && position.currentMarketValue > 0 && (
-                          <div>
-                            <Typography variant="caption" color="textSecondary">
-                              Current:{" "}
-                              {formatCurrency(position.currentMarketValue)}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              display="block"
-                              color="textSecondary"
-                            >
-                              @{" "}
-                              {formatCurrency(
-                                position.effectivePrice || position.currentPrice
-                              )}
-                              /share
-                              {position.strikePrice &&
-                                position.currentPrice >
-                                  position.strikePrice && (
-                                  <span
-                                    style={{
-                                      color: "orange",
-                                      fontWeight: "bold",
-                                    }}
-                                  >
-                                    {" "}
-                                    (capped at strike ${position.strikePrice})
-                                  </span>
-                                )}
-                            </Typography>
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Chip
-                        label={formatCurrency(position.totalOptionPremium)}
-                        color={
-                          position.totalOptionPremium > 0
-                            ? "success"
-                            : position.totalOptionPremium < 0
-                            ? "error"
-                            : "default"
-                        }
-                        size="small"
-                      />
-                      {position.totalOptionTransactions > 0 && (
-                        <Typography
-                          variant="caption"
-                          display="block"
-                          color="textSecondary"
-                        >
-                          {position.totalOptionTransactions} option trades
+                        <Typography variant="caption" color="textSecondary">
+                          {formatDate(position.firstTransactionDate)} -{" "}
+                          {formatDate(position.lastTransactionDate)}
                         </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Chip
-                        label={formatCurrency(position.totalReturn)}
-                        color={getProfitLossColor(position.totalReturn)}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      {position.returnPercentage !== undefined ? (
+                      </TableCell>
+                      <TableCell align="right">
+                        {getStatusChip(position.isOpen)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {position.totalShares?.toLocaleString() || 0}
+                      </TableCell>
+                      <TableCell align="right">
+                        {formatCurrency(position.avgCostBasis)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {formatCurrency(position.totalCost)}
+                      </TableCell>
+                      <TableCell align="right">
+                        <div>
+                          <Typography variant="body2" fontWeight="bold">
+                            {formatCurrency(position.totalProceeds)}
+                          </Typography>
+                          {position.isOpen &&
+                            position.currentMarketValue > 0 && (
+                              <div>
+                                <Typography
+                                  variant="caption"
+                                  color="textSecondary"
+                                >
+                                  Current:{" "}
+                                  {formatCurrency(position.currentMarketValue)}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  display="block"
+                                  color="textSecondary"
+                                >
+                                  @{" "}
+                                  {formatCurrency(
+                                    position.effectivePrice ||
+                                      position.currentPrice
+                                  )}
+                                  /share
+                                  {position.strikePrice &&
+                                    position.currentPrice >
+                                      position.strikePrice && (
+                                      <span
+                                        style={{
+                                          color: "orange",
+                                          fontWeight: "bold",
+                                        }}
+                                      >
+                                        {" "}
+                                        (capped at strike $
+                                        {position.strikePrice})
+                                      </span>
+                                    )}
+                                </Typography>
+                              </div>
+                            )}
+                        </div>
+                      </TableCell>
+                      <TableCell align="right">
                         <Chip
-                          label={`${position.returnPercentage.toFixed(1)}%`}
-                          color={getProfitLossColor(position.returnPercentage)}
+                          label={formatCurrency(position.totalOptionPremium)}
+                          color={
+                            position.totalOptionPremium > 0
+                              ? "success"
+                              : position.totalOptionPremium < 0
+                              ? "error"
+                              : "default"
+                          }
                           size="small"
                         />
-                      ) : (
-                        "N/A"
-                      )}
-                    </TableCell>
-                    <TableCell align="right">
-                      {position.daysHeld} days
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2">
-                        {position.totalTransactions} total
-                      </Typography>
-                      <Typography variant="caption" color="textSecondary">
-                        {position.equityTransactions || 0} equity,{" "}
-                        {position.totalOptionTransactions || 0} options
-                      </Typography>
-                      {position.totalSharesBought > 0 && (
-                        <Typography
-                          variant="caption"
-                          display="block"
-                          color="textSecondary"
-                        >
-                          Bought: {position.totalSharesBought}, Sold:{" "}
-                          {position.totalSharesSold || 0}
+                        {position.totalOptionTransactions > 0 && (
+                          <Typography
+                            variant="caption"
+                            display="block"
+                            color="textSecondary"
+                          >
+                            {position.totalOptionTransactions} option trades
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Chip
+                          label={formatCurrency(position.totalReturn)}
+                          color={getProfitLossColor(position.totalReturn)}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        {position.returnPercentage !== undefined ? (
+                          <Chip
+                            label={`${position.returnPercentage.toFixed(1)}%`}
+                            color={getProfitLossColor(
+                              position.returnPercentage
+                            )}
+                            size="small"
+                          />
+                        ) : (
+                          "N/A"
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        {position.daysHeld} days
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2">
+                          {position.totalTransactions} total
                         </Typography>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                        <Typography variant="caption" color="textSecondary">
+                          {position.equityTransactions || 0} equity,{" "}
+                          {position.totalOptionTransactions || 0} options
+                        </Typography>
+                        {position.totalSharesBought > 0 && (
+                          <Typography
+                            variant="caption"
+                            display="block"
+                            color="textSecondary"
+                          >
+                            Bought: {position.totalSharesBought}, Sold:{" "}
+                            {position.totalSharesSold || 0}
+                          </Typography>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
             </TableBody>
           </Table>
         </TableContainer>
