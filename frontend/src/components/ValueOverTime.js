@@ -139,6 +139,10 @@ const ValueOverTime = () => {
     fetchValueData();
   }, [fetchValueData]);
 
+  // Filter out future weeks from chartData
+  const today = dayjs().format("YYYY-MM-DD");
+  const filteredChartData = chartData.filter((d) => d.date <= today);
+
   if (loading) {
     return (
       <Box
@@ -197,7 +201,7 @@ const ValueOverTime = () => {
       <Box sx={{ width: "100%", height: 400 }}>
         <ResponsiveContainer>
           <LineChart
-            data={chartData}
+            data={filteredChartData}
             margin={{ top: 10, right: 30, left: 20, bottom: 30 }}
           >
             <CartesianGrid strokeDasharray="3 3" />
