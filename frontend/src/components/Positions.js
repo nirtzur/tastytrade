@@ -262,6 +262,12 @@ function Positions() {
                     );
                   };
 
+                  const costBasis = position.totalCost - position.totalProceeds;
+                  const returnPercentage =
+                    costBasis !== 0
+                      ? (position.totalReturn / costBasis) * 100
+                      : undefined;
+
                   return (
                     <TableRow
                       key={`${position.symbol}-${position.firstTransactionDate}-${index}`}
@@ -362,12 +368,10 @@ function Positions() {
                         />
                       </TableCell>
                       <TableCell align="right">
-                        {position.returnPercentage !== undefined ? (
+                        {returnPercentage !== undefined ? (
                           <Chip
-                            label={`${position.returnPercentage.toFixed(1)}%`}
-                            color={getProfitLossColor(
-                              position.returnPercentage
-                            )}
+                            label={`${returnPercentage.toFixed(1)}%`}
+                            color={getProfitLossColor(returnPercentage)}
                             size="small"
                           />
                         ) : (
