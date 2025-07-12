@@ -306,20 +306,11 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
   const today = new Date();
   const expirationDate = new Date();
   expirationDate.setDate(today.getDate() + DAYS_TO_EXPIRATION);
+  let processedCount = 0;
 
-  for (let i = 0; i < symbols.length; i++) {
-    const symbol = symbols[i];
-
-    // Send progress update
-    progressCallback({
-      type: "progress",
-      current: i + 1,
-      total: symbols.length,
-      symbol: symbol,
-      message: `Processing ${symbol}... (${i + 1}/${symbols.length})`,
-    });
-
+  const processSymbol = async (symbol) => {
     const data = await fetchSymbolData(symbol, token);
+    let result = null;
     if (data) {
       const currentPrice = parseFloat(data.quote?.last) || null;
       const stockBid = parseFloat(data.quote?.bid) || null;
@@ -387,7 +378,7 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
         analysisResult.status = "READY";
       }
 
-      results.push(analysisResult);
+      result = analysisResult;
 
       // Save to database
       try {
@@ -399,8 +390,24 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
       }
     }
 
-    // Add small delay to prevent overwhelming the API
-    await sleep(100);
+    processedCount++;
+    // Send progress update
+    progressCallback({
+      type: "progress",
+      current: processedCount,
+      total: symbols.length,
+      symbol: symbol,
+      message: `Processing ${symbol}... (${processedCount}/${symbols.length})`,
+    });
+
+    return result;
+  };
+
+  const concurrencyLimit = 20; // Process 20 symbols at a time
+  for (let i = 0; i < symbols.length; i += concurrencyLimit) {
+    const chunk = symbols.slice(i, i + concurrencyLimit);
+    const chunkResults = await Promise.all(chunk.map(processSymbol));
+    results.push(...chunkResults.filter(Boolean));
   }
 
   return results;
