@@ -349,19 +349,21 @@ app.get("/api/trading-data", authenticate, async (req, res) => {
         ],
       ],
       group: ["symbol"],
+      raw: true,
     });
 
-    const results = await Promise.all(
-      latestAnalyses.map((analysis) =>
-        AnalysisResult.findOne({
-          where: {
-            symbol: analysis.symbol,
-            analyzed_at: analysis.get("latest_at"),
-          },
-          raw: true,
-        })
-      )
-    );
+    const identifiers = latestAnalyses.map((a) => ({
+      symbol: a.symbol,
+      analyzed_at: a.latest_at,
+    }));
+
+    const results = await AnalysisResult.findAll({
+      where: {
+        [sequelize.Sequelize.Op.or]: identifiers,
+      },
+      order: [["option_mid_percent", "DESC"]],
+      raw: true,
+    });
 
     res.json(results);
   } catch (error) {
