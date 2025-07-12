@@ -27,7 +27,7 @@ const LoginPage = () => {
       await client.post("/api/auth/login", { userLogin, password });
 
       // Login successful, redirect to home page
-      navigate("/account-history");
+      navigate("/transaction-history");
     } catch (err) {
       setError(err.message);
     } finally {
