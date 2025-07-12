@@ -1,6 +1,6 @@
 require("dotenv").config();
 
-const RATE_LIMIT_DELAY_MS = parseInt(process.env.RATE_LIMIT_DELAY_MS) || 100;
+const RATE_LIMIT_DELAY_MS = parseInt(process.env.RATE_LIMIT_DELAY_MS) || 50;
 
 /**
  * Sleep for a specified number of milliseconds

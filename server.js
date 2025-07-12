@@ -340,26 +340,39 @@ app.get("/api/trading-data", authenticate, async (req, res) => {
   try {
     logInfo("Fetching trading data from database");
 
-    const latestAnalyses = await AnalysisResult.findAll({
+    // Get the maximum analyzed_at date (date only, not timestamp)
+    const maxDateResult = await AnalysisResult.findOne({
       attributes: [
-        "symbol",
         [
-          sequelize.Sequelize.fn("MAX", sequelize.Sequelize.col("analyzed_at")),
-          "latest_at",
+          sequelize.Sequelize.fn(
+            "DATE",
+            sequelize.Sequelize.fn(
+              "MAX",
+              sequelize.Sequelize.col("analyzed_at")
+            )
+          ),
+          "max_date",
         ],
       ],
-      group: ["symbol"],
       raw: true,
     });
 
-    const identifiers = latestAnalyses.map((a) => ({
-      symbol: a.symbol,
-      analyzed_at: a.latest_at,
-    }));
+    if (!maxDateResult || !maxDateResult.max_date) {
+      return res.json([]);
+    }
 
+    // Fetch all symbols that match the maximum date (by date, not timestamp)
     const results = await AnalysisResult.findAll({
       where: {
-        [sequelize.Sequelize.Op.or]: identifiers,
+        [sequelize.Sequelize.Op.and]: [
+          sequelize.Sequelize.where(
+            sequelize.Sequelize.fn(
+              "DATE",
+              sequelize.Sequelize.col("analyzed_at")
+            ),
+            maxDateResult.max_date
+          ),
+        ],
       },
       order: [["option_mid_percent", "DESC"]],
       raw: true,

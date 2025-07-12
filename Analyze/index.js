@@ -309,81 +309,91 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
   let processedCount = 0;
 
   const processSymbol = async (symbol) => {
-    const data = await fetchSymbolData(symbol, token);
-    let result = null;
-    if (data) {
-      const currentPrice = parseFloat(data.quote?.last) || null;
-      const stockBid = parseFloat(data.quote?.bid) || null;
-      const stockAsk = parseFloat(data.quote?.ask) || null;
-      const stockSpread = stockAsk && stockBid ? stockAsk - stockBid : null;
-      const strikePrice = parseFloat(data.options?.strike_price) || null;
-      const optionBid = parseFloat(data.options?.bid || 0);
-      const optionAsk = parseFloat(data.options?.ask) || null;
-      const optionMidPrice =
-        optionBid && optionAsk ? (optionBid + optionAsk) / 2 : null;
-      const optionMidPercent =
-        strikePrice && optionMidPrice
-          ? (optionMidPrice / strikePrice) * 100
+    let analysisResult;
+    try {
+      const data = await fetchSymbolData(symbol, token);
+      if (data) {
+        const currentPrice = parseFloat(data.quote?.last) || null;
+        const stockBid = parseFloat(data.quote?.bid) || null;
+        const stockAsk = parseFloat(data.quote?.ask) || null;
+        const stockSpread = stockAsk && stockBid ? stockAsk - stockBid : null;
+        const strikePrice = parseFloat(data.options?.strike_price) || null;
+        const optionBid = parseFloat(data.options?.bid || 0);
+        const optionAsk = parseFloat(data.options?.ask) || null;
+        const optionMidPrice = (optionBid + optionAsk) / 2;
+        const optionMidPercent =
+          strikePrice && optionMidPrice
+            ? (optionMidPrice / strikePrice) * 100
+            : null;
+        const optionExpirationDate = data.options["expiration-date"]
+          ? new Date(data.options["expiration-date"])
           : null;
-      const optionExpirationDate = data.options["expiration-date"]
-        ? new Date(data.options["expiration-date"])
-        : null;
 
-      // Get days to earnings (same as original processSymbols)
-      let daysToEarnings = null;
-      if (
-        optionMidPercent &&
-        parseFloat(optionMidPercent) > MIN_MID_PERCENT &&
-        currentPrice &&
-        currentPrice > MIN_STOCK_PRICE &&
-        optionExpirationDate &&
-        optionExpirationDate <= expirationDate
-      ) {
-        daysToEarnings = await getDaysToEarnings(symbol);
+        // Get days to earnings
+        let daysToEarnings = null;
+        if (
+          optionMidPercent &&
+          parseFloat(optionMidPercent) > MIN_MID_PERCENT &&
+          currentPrice &&
+          currentPrice > MIN_STOCK_PRICE &&
+          optionExpirationDate &&
+          optionExpirationDate <= expirationDate
+        ) {
+          daysToEarnings = await getDaysToEarnings(symbol);
+        }
+
+        analysisResult = {
+          symbol,
+          current_price: currentPrice,
+          stock_bid: stockBid,
+          stock_ask: stockAsk,
+          stock_spread: stockSpread,
+          option_strike_price: strikePrice,
+          option_bid: optionBid,
+          option_ask: optionAsk,
+          option_mid_price: optionMidPrice,
+          option_mid_percent: optionMidPercent,
+          option_expiration_date: optionExpirationDate,
+          days_to_earnings: daysToEarnings,
+          analyzed_at: today,
+          status: "ANALYZING", // Default status
+        };
+
+        // Determine final status
+        if (currentPrice && currentPrice < MIN_STOCK_PRICE) {
+          analysisResult.status = "LOW_STOCK_PRICE";
+        } else if (stockSpread && stockSpread > MAX_STOCK_SPREAD) {
+          analysisResult.status = "HIGH_SPREAD";
+        } else if (optionMidPercent && optionMidPercent < MIN_MID_PERCENT) {
+          analysisResult.status = "LOW_MID_PERCENT";
+        } else if (
+          currentPrice &&
+          stockSpread &&
+          optionMidPercent &&
+          currentPrice >= MIN_STOCK_PRICE &&
+          stockSpread <= MAX_STOCK_SPREAD &&
+          optionMidPercent >= MIN_MID_PERCENT
+        ) {
+          analysisResult.status = "READY";
+        } else {
+          analysisResult.status = "NOT_READY";
+        }
       }
-
-      // Prepare analysis result object (same as original processSymbols)
-      const analysisResult = {
+    } catch (error) {
+      console.error(chalk.red(`Error processing ${symbol}: ${error.message}`));
+      analysisResult = {
         symbol,
-        current_price: currentPrice,
-        stock_bid: stockBid,
-        stock_ask: stockAsk,
-        stock_spread: stockSpread,
-        option_strike_price: strikePrice,
-        option_bid: optionBid,
-        option_ask: optionAsk,
-        option_mid_price: optionMidPrice,
-        option_mid_percent: optionMidPercent,
-        option_expiration_date: optionExpirationDate,
-        days_to_earnings: daysToEarnings,
         analyzed_at: today,
-        status: "ANALYZING",
+        status: "ERROR",
+        notes: `Error: ${error.message}`,
       };
+    }
 
-      // Apply the same logic as original processSymbols for status determination
-      if (currentPrice && currentPrice < MIN_STOCK_PRICE) {
-        analysisResult.status = "LOW_STOCK_PRICE";
-      } else if (stockSpread && stockSpread > MAX_STOCK_SPREAD) {
-        analysisResult.status = "HIGH_SPREAD";
-      } else if (optionMidPercent && optionMidPercent < MIN_MID_PERCENT) {
-        analysisResult.status = "LOW_MID_PERCENT";
-      } else if (
-        currentPrice &&
-        stockSpread &&
-        optionMidPercent &&
-        currentPrice >= MIN_STOCK_PRICE &&
-        stockSpread <= MAX_STOCK_SPREAD &&
-        optionMidPercent >= MIN_MID_PERCENT
-      ) {
-        analysisResult.status = "READY";
-      }
-
-      result = analysisResult;
-
-      // Save to database
+    // Save to database
+    if (analysisResult) {
       try {
         await AnalysisResult.upsert(analysisResult, {
-          where: { symbol },
+          where: { symbol, analyzed_at: analysisResult.analyzed_at },
         });
       } catch (dbError) {
         console.error(`Error saving ${symbol} to database:`, dbError);
@@ -400,14 +410,15 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
       message: `Processing ${symbol}... (${processedCount}/${symbols.length})`,
     });
 
-    return result;
+    return analysisResult;
   };
 
-  const concurrencyLimit = 20; // Process 20 symbols at a time
-  for (let i = 0; i < symbols.length; i += concurrencyLimit) {
-    const chunk = symbols.slice(i, i + concurrencyLimit);
-    const chunkResults = await Promise.all(chunk.map(processSymbol));
-    results.push(...chunkResults.filter(Boolean));
+  // Process symbols sequentially (no concurrency)
+  for (const symbol of symbols) {
+    const result = await processSymbol(symbol);
+    if (result) {
+      results.push(result);
+    }
   }
 
   return results;
