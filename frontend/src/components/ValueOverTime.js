@@ -4,8 +4,8 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -87,8 +87,7 @@ const ValueOverTime = () => {
         }
       });
 
-      // Calculate cumulative value
-      let runningTotal = 0;
+      // Calculate weekly value (not cumulative)
       const sortedWeeks = Array.from(weeklyData.keys()).sort();
 
       for (const weekKey of sortedWeeks) {
@@ -97,8 +96,7 @@ const ValueOverTime = () => {
           const value = parseFloat(tx.value) || 0;
           return tx["value-effect"] === "Debit" ? sum - value : sum + value;
         }, 0);
-        runningTotal += weeklyTransactionValue;
-        week.value = runningTotal;
+        week.value = weeklyTransactionValue;
       }
 
       return Array.from(weeklyData.values());
@@ -332,7 +330,7 @@ const ValueOverTime = () => {
         </LocalizationProvider>
       </Box>
       <ResponsiveContainer width="100%" height={400}>
-        <LineChart
+        <BarChart
           data={filteredChartData}
           margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           onMouseMove={handleMouseMove}
@@ -353,13 +351,8 @@ const ValueOverTime = () => {
             }
           />
           <Tooltip content={<span />} cursor={false} />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke="#8884d8"
-            activeDot={{ r: 8 }}
-          />
-        </LineChart>
+          <Bar dataKey="value" fill="#8884d8" />
+        </BarChart>
       </ResponsiveContainer>
       {isTooltipVisible && <CustomTooltip data={tooltipData} />}
     </Box>
