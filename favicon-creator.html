@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Favicon</title>
+</head>
+<body>
+    <canvas id="canvas" width="32" height="32"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, 32, 32);
+        
+        // Draw outer blue circle
+        ctx.fillStyle = '#1B8EC7';
+        ctx.beginPath();
+        ctx.arc(16, 16, 14, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Draw border
+        ctx.strokeStyle = '#0F6E9F';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw inner white circle
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(16, 16, 9, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Draw orange iris
+        ctx.fillStyle = '#F5A623';
+        ctx.beginPath();
+        ctx.arc(16, 16, 5, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Draw black pupil
+        ctx.fillStyle = '#2C2C2C';
+        ctx.beginPath();
+        ctx.arc(16, 16, 2, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Draw blue tabs
+        ctx.fillStyle = '#1B8EC7';
+        ctx.fillRect(2, 12, 6, 8);
+        ctx.fillRect(24, 12, 6, 8);
+        
+        console.log('Favicon created on canvas');
+        
+        // You can right-click and save this as favicon.png
+        canvas.style.border = '1px solid black';
+        canvas.style.imageRendering = 'pixelated';
+        canvas.style.width = '128px';
+        canvas.style.height = '128px';
+        
+        const p = document.createElement('p');
+        p.textContent = 'Right-click the image above and save as favicon.png';
+        document.body.appendChild(p);
+    </script>
+</body>
+</html>

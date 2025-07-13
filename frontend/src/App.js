@@ -6,7 +6,7 @@ import {
   useNavigate,
   useLocation,
 } from "react-router-dom";
-import { AppBar, Tabs, Tab, Box } from "@mui/material";
+import { AppBar, Tabs, Tab, Box, Typography } from "@mui/material";
 import TransactionHistory from "./components/TransactionHistory";
 import OpenPositions from "./components/OpenPositions";
 import VisualPage from "./components/VisualPage";
@@ -16,6 +16,7 @@ import BalanceChart from "./components/BalanceChart";
 import Positions from "./components/Positions";
 import Funding from "./components/Funding";
 import LoginPage from "./components/LoginPage";
+import { ReactComponent as PapoyIcon } from "./papoy-icon.svg";
 
 function App() {
   const navigate = useNavigate();
@@ -30,21 +31,32 @@ function App() {
     <div className="App">
       {!isLoginPage && (
         <AppBar position="static" color="default">
-          <Tabs
-            value={location.pathname}
-            onChange={handleTabChange}
-            indicatorColor="primary"
-            textColor="primary"
-          >
-            <Tab label="Transaction History" value="/transaction-history" />
-            <Tab label="Open Positions" value="/open-positions" />
-            <Tab label="Analysis" value="/analysis" />
-            <Tab label="Weekly Value" value="/value" />
-            <Tab label="Balance" value="/balance" />
-            <Tab label="Weekly Options" value="/visual" />
-            <Tab label="Positions" value="/positions" />
-            <Tab label="Funding" value="/funding" />
-          </Tabs>
+          <Box sx={{ display: "flex", alignItems: "center", paddingLeft: 2 }}>
+            <Box sx={{ display: "flex", alignItems: "center", marginRight: 3 }}>
+              <PapoyIcon style={{ width: 32, height: 32, marginRight: 8 }} />
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: "bold", color: "#1B8EC7" }}
+              >
+                Papoy
+              </Typography>
+            </Box>
+            <Tabs
+              value={location.pathname}
+              onChange={handleTabChange}
+              indicatorColor="primary"
+              textColor="primary"
+            >
+              <Tab label="Transaction History" value="/transaction-history" />
+              <Tab label="Open Positions" value="/open-positions" />
+              <Tab label="Analysis" value="/analysis" />
+              <Tab label="Weekly Value" value="/value" />
+              <Tab label="Balance" value="/balance" />
+              <Tab label="Weekly Options" value="/visual" />
+              <Tab label="Positions" value="/positions" />
+              <Tab label="Funding" value="/funding" />
+            </Tabs>
+          </Box>
         </AppBar>
       )}
       <Box sx={{ p: 3 }}>
