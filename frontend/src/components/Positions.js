@@ -262,10 +262,9 @@ function Positions() {
                     );
                   };
 
-                  const costBasis = position.totalCost - position.totalProceeds;
                   const returnPercentage =
-                    costBasis !== 0
-                      ? (position.totalReturn / costBasis) * 100
+                    position.totalCost > 0
+                      ? (position.totalReturn / position.totalCost) * 100
                       : undefined;
 
                   return (
