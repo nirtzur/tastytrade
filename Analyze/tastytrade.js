@@ -56,7 +56,7 @@ async function makeRequest(
     return response.data;
   } catch (error) {
     if (error.response?.status === 429 && retries > 0) {
-      await sleep(1000 * (4 - retries)); // Exponential backoff
+      await sleep(100 * (4 - retries)); // Exponential backoff
       return makeRequest(method, endpoint, token, data, params, retries - 1);
     }
 
