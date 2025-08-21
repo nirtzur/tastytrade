@@ -190,15 +190,6 @@ async function processSymbols(symbols, token) {
                 2
               )}% of strike exceeds minimum ${MIN_MID_PERCENT}%`
             );
-
-            // Get days to earnings
-            const daysToEarnings = await getDaysToEarnings(symbol);
-            if (daysToEarnings) {
-              analysisResult.days_to_earnings = daysToEarnings;
-              analysisResult.notes.push(
-                `${daysToEarnings} days until earnings`
-              );
-            }
           } else {
             analysisResult.status = "LOW_MID_PERCENT";
             if (optionMidPercent) {
@@ -218,6 +209,27 @@ async function processSymbols(symbols, token) {
         analysisResult.notes.push(
           `Stock price $${currentPrice} below minimum $${MIN_STOCK_PRICE}`
         );
+      }
+
+      // Always attempt to fetch days to earnings for every symbol
+      try {
+        const daysToEarnings = await getDaysToEarnings(symbol);
+        if (daysToEarnings !== null && daysToEarnings !== undefined) {
+          analysisResult.days_to_earnings = daysToEarnings;
+          // Only add note if not already added for this info
+          if (
+            !analysisResult.notes.some((n) => n.includes("days until earnings"))
+          ) {
+            analysisResult.notes.push(`${daysToEarnings} days until earnings`);
+          }
+        }
+      } catch (e) {
+        if (isDebug) {
+          console.error(
+            `Error fetching days to earnings for ${symbol}:`,
+            e.message
+          );
+        }
       }
 
       // Join notes into a single string
@@ -329,18 +341,8 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
           ? new Date(data.options["expiration-date"])
           : null;
 
-        // Get days to earnings
-        let daysToEarnings = null;
-        if (
-          optionMidPercent &&
-          parseFloat(optionMidPercent) > MIN_MID_PERCENT &&
-          currentPrice &&
-          currentPrice > MIN_STOCK_PRICE &&
-          optionExpirationDate &&
-          optionExpirationDate <= expirationDate
-        ) {
-          daysToEarnings = await getDaysToEarnings(symbol);
-        }
+        // Get days to earnings for all symbols regardless of readiness
+        let daysToEarnings = await getDaysToEarnings(symbol);
 
         analysisResult = {
           symbol,
