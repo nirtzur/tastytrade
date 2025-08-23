@@ -315,6 +315,9 @@ const ValueOverTime = () => {
       <Typography variant="h5" gutterBottom>
         Weekly Account Value
       </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Summary of all transaction per week
+      </Typography>
       <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
         <LocalizationProvider dateAdapter={AdapterDayjs}>
           <DatePicker
