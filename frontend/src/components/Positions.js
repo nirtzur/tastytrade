@@ -263,7 +263,9 @@ function Positions() {
                   };
 
                   const returnPercentage =
-                    position.totalCost > 0
+                    position.returnPercentage !== undefined
+                      ? position.returnPercentage
+                      : position.totalCost > 0
                       ? (position.totalReturn / position.totalCost) * 100
                       : undefined;
 

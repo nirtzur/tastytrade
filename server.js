@@ -859,30 +859,31 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
             position.totalProceeds - position.totalSharesSold * avgCostPerShare;
         }
 
-        // Extract strike price from the latest 'Sell to Open' option transaction
+        // Extract strike price and option type from the latest option transaction
         let strikePrice = null;
-        let latestSellToOpenDate = null;
+        let optionType = null; // 'C' for call, 'P' for put
+        let latestOptionDate = null;
 
         for (const tx of position.transactions) {
-          if (
-            tx.instrument_type === "Equity Option" &&
-            tx.action === "Sell to Open" &&
-            tx.symbol
-          ) {
+          if (tx.instrument_type === "Equity Option") {
             const txDate = new Date(tx.executed_at);
 
-            // Only process if this is the latest 'Sell to Open' transaction
-            if (!latestSellToOpenDate || txDate > latestSellToOpenDate) {
+            // Only process if this is the latest option transaction
+            if (!latestOptionDate || txDate > latestOptionDate) {
               // Option symbols typically end with 8 digits for TastyTrade format
-              // Example: "AAPL  240621C00200000" where the last 8 digits represent strike price
+              // Example: "AAPL  24062100200000" where the last 8 digits are the strike price
               const match = tx.symbol.match(/(\d{8})$/);
               if (match) {
                 const strikePart = match[1];
-                // Last 8 digits: first digit is call/put indicator, last 7 are strike * 1000
-                const strikeValue = parseFloat(strikePart.substring(1)) / 1000;
+                // Find option type (C or P) in the symbol
+                const typeMatch = tx.symbol.match(/([CP])/);
+                if (typeMatch) {
+                  optionType = typeMatch[1];
+                }
+                const strikeValue = parseFloat(strikePart) / 1000;
                 if (strikeValue > 0) {
                   strikePrice = strikeValue;
-                  latestSellToOpenDate = txDate;
+                  latestOptionDate = txDate;
                 }
               }
             }
@@ -893,15 +894,32 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
         const currentPrice = yahooFinancePrices[position.symbol];
         let effectivePrice = currentPrice;
 
-        // If yahoo price is higher than strike price, cap it at strike price (for covered calls)
-        if (currentPrice && strikePrice && currentPrice > strikePrice) {
-          effectivePrice = strikePrice;
+        // Adjust effective price for options: cap/floor at strike for both calls and puts
+        if (
+          currentPrice &&
+          strikePrice &&
+          (optionType === "C" || optionType === "P")
+        ) {
+          effectivePrice = Math.min(currentPrice, strikePrice);
         }
 
-        const currentMarketValue =
-          position.isOpen && effectivePrice && position.totalShares > 0
-            ? effectivePrice * position.totalShares
-            : 0;
+        let currentMarketValue = 0;
+        if (position.isOpen && effectivePrice) {
+          currentMarketValue = effectivePrice * position.totalShares;
+        }
+
+        // For put options with no underlying shares (cash-secured puts), use effective price
+        if (
+          position.isOpen &&
+          position.totalShares === 0 &&
+          position.totalOptionContracts > 0 &&
+          optionType === "P" &&
+          currentPrice &&
+          strikePrice
+        ) {
+          currentMarketValue =
+            position.totalOptionContracts * 100 * effectivePrice;
+        }
 
         // Calculate total return
         let totalReturn;
@@ -915,6 +933,21 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
         } else {
           // For closed positions: option premium + realized P&L
           totalReturn = position.totalOptionPremium + realizedPL;
+        }
+
+        // For cash-secured puts, adjust total return to premium minus intrinsic value
+        if (
+          position.isOpen &&
+          position.totalShares === 0 &&
+          position.totalOptionContracts > 0 &&
+          optionType === "P" &&
+          currentPrice &&
+          strikePrice
+        ) {
+          const intrinsicValue = Math.max(strikePrice - currentPrice, 0);
+          totalReturn =
+            position.totalOptionPremium -
+            position.totalOptionContracts * 100 * intrinsicValue;
         }
 
         // Calculate return percentage
@@ -936,6 +969,18 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
           }
         }
 
+        // For cash-secured puts, return percentage is total return as portion of strike price
+        if (
+          position.totalShares === 0 &&
+          position.totalOptionContracts > 0 &&
+          optionType === "P" &&
+          strikePrice
+        ) {
+          returnPercentage =
+            (totalReturn * 100) /
+            (strikePrice * position.totalOptionContracts * 100);
+        }
+
         return {
           ...position,
           totalTransactions: position.transactions.length,
@@ -945,6 +990,7 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
           currentPrice,
           currentMarketValue,
           strikePrice,
+          optionType, // Include option type in response
           effectivePrice,
           daysHeld: Math.ceil(
             (new Date(
