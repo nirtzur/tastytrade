@@ -321,12 +321,23 @@ function OpenPositions() {
                     <strong>{position.symbol}</strong>
                   </TableCell>
                   <TableCell align="right">
-                    <Chip
-                      label="Open"
-                      color="success"
-                      size="small"
-                      variant="outlined"
-                    />
+                    {position.totalShares === 0 &&
+                    position.totalOptionContracts > 0 &&
+                    position.optionType === "P" ? (
+                      <Chip
+                        label="Cash Secured Put"
+                        color="warning"
+                        size="small"
+                        variant="outlined"
+                      />
+                    ) : (
+                      <Chip
+                        label="Open"
+                        color="success"
+                        size="small"
+                        variant="outlined"
+                      />
+                    )}
                   </TableCell>
                   <TableCell align="right">
                     {position.totalShares?.toLocaleString() || "0"}
@@ -366,6 +377,49 @@ function OpenPositions() {
           </Table>
         </TableContainer>
       )}
+
+      {/* Cash Secured Puts Summary */}
+      {(() => {
+        const cashSecuredPuts = positions.filter(
+          (position) =>
+            position.totalShares === 0 &&
+            position.totalOptionContracts > 0 &&
+            position.optionType === "P" &&
+            position.strikePrice
+        );
+
+        if (cashSecuredPuts.length === 0) return null;
+
+        const totalCashRequired = cashSecuredPuts.reduce((sum, position) => {
+          return (
+            sum + position.totalOptionContracts * position.strikePrice * 100
+          );
+        }, 0);
+
+        return (
+          <Box
+            sx={{
+              padding: 2,
+              marginTop: 2,
+              backgroundColor: "background.paper",
+              borderRadius: 1,
+              boxShadow: 1,
+            }}
+          >
+            <Typography variant="h6" gutterBottom>
+              Cash Secured Puts Summary
+            </Typography>
+            <Typography variant="body1">
+              Total Cash Required to be Secured:{" "}
+              {formatCurrency(totalCashRequired)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Based on {cashSecuredPuts.length} cash secured put position
+              {cashSecuredPuts.length !== 1 ? "s" : ""}
+            </Typography>
+          </Box>
+        );
+      })()}
     </Box>
   );
 }
