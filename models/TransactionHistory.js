@@ -36,7 +36,7 @@ TransactionHistory.init(
       type: DataTypes.DECIMAL(10, 2),
     },
     value_effect: {
-      type: DataTypes.STRING,
+      type: DataTypes.ENUM("Credit", "Debit", "None"),
     },
     description: {
       type: DataTypes.TEXT,

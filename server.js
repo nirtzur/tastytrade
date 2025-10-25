@@ -783,6 +783,7 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
         } else if (tx.value_effect === "Debit") {
           currentPosition.totalOptionPremium -= value;
         }
+        // Note: value_effect can also be "none" - in this case, no premium adjustment is made
 
         // Track net option contracts (sold options are positive, bought options are negative)
         if (isOpeningTransaction(tx)) {
@@ -870,16 +871,12 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
 
             // Only process if this is the latest option transaction
             if (!latestOptionDate || txDate > latestOptionDate) {
-              // Option symbols typically end with 8 digits for TastyTrade format
-              // Example: "AAPL  24062100200000" where the last 8 digits are the strike price
-              const match = tx.symbol.match(/(\d{8})$/);
+              // Option symbols typically end with C/P followed by 8 digits for TastyTrade format
+              // Example: "MCHP  251031P00064000" where P is the option type and 00064000 is the strike
+              const match = tx.symbol.match(/([CP])(\d{8})$/);
               if (match) {
-                const strikePart = match[1];
-                // Find option type (C or P) in the symbol
-                const typeMatch = tx.symbol.match(/([CP])/);
-                if (typeMatch) {
-                  optionType = typeMatch[1];
-                }
+                optionType = match[1]; // 'C' or 'P'
+                const strikePart = match[2];
                 const strikeValue = parseFloat(strikePart) / 1000;
                 if (strikeValue > 0) {
                   strikePrice = strikeValue;
