@@ -966,16 +966,16 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
           }
         }
 
-        // For cash-secured puts, return percentage is total return as portion of strike price
-        if (
-          position.totalShares === 0 &&
-          position.totalOptionContracts > 0 &&
-          optionType === "P" &&
-          strikePrice
-        ) {
-          returnPercentage =
-            (totalReturn * 100) /
-            (strikePrice * position.totalOptionContracts * 100);
+        // For cash-secured puts (open or closed), return percentage is total return as portion of strike price
+        if (position.totalShares === 0 && optionType === "P" && strikePrice) {
+          // For closed puts, use the absolute value of contracts that were traded
+          const contractsTraded =
+            Math.abs(position.totalOptionContracts) ||
+            Math.abs(position.totalOptionTransactions);
+          if (contractsTraded > 0) {
+            const totalCashAtRisk = strikePrice * contractsTraded * 100;
+            returnPercentage = (totalReturn / totalCashAtRisk) * 100;
+          }
         }
 
         return {
