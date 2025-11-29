@@ -69,6 +69,33 @@ function Positions() {
     return "default";
   };
 
+  const formatSymbolDisplay = (symbol) => {
+    // Check if this is a full option symbol (contains spaces and ends with option format)
+    const optionMatch = symbol.match(/^(.+?)\s+(\d{6})([CP])(\d{8})$/);
+    if (optionMatch) {
+      const [, underlying, date, type, strike] = optionMatch;
+      const strikePrice = (parseInt(strike) / 1000).toFixed(2);
+      const optionType = type === "C" ? "Call" : "Put";
+
+      // Format date as MM/DD/YY
+      const year = "20" + date.substring(0, 2);
+      const month = date.substring(2, 4);
+      const day = date.substring(4, 6);
+      const formattedDate = `${month}/${day}/${year.substring(2)}`;
+
+      return {
+        main: underlying,
+        details: `${formattedDate} ${optionType} $${strikePrice}`,
+      };
+    }
+
+    // Return regular symbol
+    return {
+      main: symbol,
+      details: null,
+    };
+  };
+
   const renderTransactionTable = (transactions) => {
     if (!transactions || transactions.length === 0) {
       return <Typography variant="body2">No transactions found</Typography>;
@@ -423,13 +450,34 @@ function Positions() {
                       key={`${position.symbol}-${position.firstTransactionDate}-${index}`}
                     >
                       <TableCell>
-                        <Typography variant="body2" fontWeight="bold">
-                          {position.symbol}
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                          {formatDate(position.firstTransactionDate)} -{" "}
-                          {formatDate(position.lastTransactionDate)}
-                        </Typography>
+                        {(() => {
+                          const symbolInfo = formatSymbolDisplay(
+                            position.symbol
+                          );
+                          return (
+                            <div>
+                              <Typography variant="body2" fontWeight="bold">
+                                {symbolInfo.main}
+                              </Typography>
+                              {symbolInfo.details && (
+                                <Typography
+                                  variant="caption"
+                                  display="block"
+                                  color="primary"
+                                >
+                                  {symbolInfo.details}
+                                </Typography>
+                              )}
+                              <Typography
+                                variant="caption"
+                                color="textSecondary"
+                              >
+                                {formatDate(position.firstTransactionDate)} -{" "}
+                                {formatDate(position.lastTransactionDate)}
+                              </Typography>
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell align="right">
                         {getStatusChip(position.isOpen)}

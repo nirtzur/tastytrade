@@ -727,15 +727,39 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
     transactions.forEach((tx) => {
       if (!tx.symbol) return;
 
-      const symbol = tx.symbol.split(" ")[0];
-      positionsBySymbol[symbol] ??= [];
+      // Determine the grouping key based on transaction type
+      let groupingKey;
+      let displaySymbol;
 
-      let currentPosition = positionsBySymbol[symbol].find((pos) => pos.isOpen);
+      if (tx.instrument_type === "Equity Option") {
+        // Check if it's a put option
+        const match = tx.symbol.match(/([CP])(\d{8})$/);
+        if (match && match[1] === "P") {
+          // For puts, use the full option symbol as the grouping key
+          groupingKey = tx.symbol.trim();
+          displaySymbol = tx.symbol.trim();
+        } else {
+          // For calls, use the underlying stock symbol
+          displaySymbol = tx.symbol.split(" ")[0];
+          groupingKey = displaySymbol;
+        }
+      } else {
+        // For equity transactions, use the stock symbol
+        displaySymbol = tx.symbol.split(" ")[0];
+        groupingKey = displaySymbol;
+      }
+
+      positionsBySymbol[groupingKey] ??= [];
+
+      let currentPosition = positionsBySymbol[groupingKey].find(
+        (pos) => pos.isOpen
+      );
 
       if (!currentPosition) {
         // Create a new position
         currentPosition = {
-          symbol,
+          symbol: displaySymbol,
+          groupingKey: groupingKey, // Store the grouping key for reference
           totalShares: 0,
           totalCost: 0,
           totalProceeds: 0,
@@ -751,7 +775,7 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
           totalSharesBought: 0,
           totalSharesSold: 0,
         };
-        positionsBySymbol[symbol].push(currentPosition);
+        positionsBySymbol[groupingKey].push(currentPosition);
       }
 
       currentPosition.transactions.push(tx);
