@@ -15,6 +15,7 @@ import {
   Button,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
 } from "@mui/material";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
 import client from "../api/client";
@@ -66,6 +67,154 @@ function Positions() {
     if (value > 0) return "success";
     if (value < 0) return "error";
     return "default";
+  };
+
+  const renderTransactionTable = (transactions) => {
+    if (!transactions || transactions.length === 0) {
+      return <Typography variant="body2">No transactions found</Typography>;
+    }
+
+    return (
+      <Table size="small" sx={{ minWidth: 900 }}>
+        <TableHead>
+          <TableRow>
+            <TableCell
+              sx={{
+                py: 0.5,
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "white",
+              }}
+            >
+              Date
+            </TableCell>
+            <TableCell
+              sx={{
+                py: 0.5,
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "white",
+              }}
+            >
+              Symbol
+            </TableCell>
+            <TableCell
+              sx={{
+                py: 0.5,
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "white",
+              }}
+            >
+              Action
+            </TableCell>
+            <TableCell
+              sx={{
+                py: 0.5,
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "white",
+              }}
+            >
+              Type
+            </TableCell>
+            <TableCell
+              sx={{
+                py: 0.5,
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "white",
+              }}
+              align="right"
+            >
+              Qty
+            </TableCell>
+            <TableCell
+              sx={{
+                py: 0.5,
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "white",
+              }}
+              align="right"
+            >
+              Price
+            </TableCell>
+            <TableCell
+              sx={{
+                py: 0.5,
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "white",
+              }}
+              align="right"
+            >
+              Value
+            </TableCell>
+            <TableCell
+              sx={{
+                py: 0.5,
+                fontSize: "0.75rem",
+                fontWeight: "bold",
+                color: "white",
+              }}
+            >
+              Effect
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {transactions.map((tx, index) => {
+            const date = new Date(tx.executed_at).toLocaleDateString();
+            const quantity = Math.abs(tx.quantity || 0);
+            const price = tx.price
+              ? `$${parseFloat(tx.price).toFixed(2)}`
+              : "N/A";
+            const value = tx.value
+              ? `$${parseFloat(tx.value).toFixed(2)}`
+              : "N/A";
+
+            return (
+              <TableRow key={index}>
+                <TableCell sx={{ py: 0.5, fontSize: "0.7rem", color: "white" }}>
+                  {date}
+                </TableCell>
+                <TableCell sx={{ py: 0.5, fontSize: "0.7rem", color: "white" }}>
+                  {tx.symbol}
+                </TableCell>
+                <TableCell sx={{ py: 0.5, fontSize: "0.7rem", color: "white" }}>
+                  {tx.action}
+                </TableCell>
+                <TableCell sx={{ py: 0.5, fontSize: "0.7rem", color: "white" }}>
+                  {tx.instrument_type}
+                </TableCell>
+                <TableCell
+                  sx={{ py: 0.5, fontSize: "0.7rem", color: "white" }}
+                  align="right"
+                >
+                  {quantity}
+                </TableCell>
+                <TableCell
+                  sx={{ py: 0.5, fontSize: "0.7rem", color: "white" }}
+                  align="right"
+                >
+                  {price}
+                </TableCell>
+                <TableCell
+                  sx={{ py: 0.5, fontSize: "0.7rem", color: "white" }}
+                  align="right"
+                >
+                  {value}
+                </TableCell>
+                <TableCell sx={{ py: 0.5, fontSize: "0.7rem", color: "white" }}>
+                  {tx.value_effect || "N/A"}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    );
   };
 
   if (loading) {
@@ -383,23 +532,68 @@ function Positions() {
                         {position.daysHeld} days
                       </TableCell>
                       <TableCell align="right">
-                        <Typography variant="body2">
-                          {position.totalTransactions} total
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                          {position.equityTransactions || 0} equity,{" "}
-                          {position.totalOptionTransactions || 0} options
-                        </Typography>
-                        {position.totalSharesBought > 0 && (
-                          <Typography
-                            variant="caption"
-                            display="block"
-                            color="textSecondary"
+                        <Tooltip
+                          title={
+                            <Box
+                              sx={{
+                                minWidth: "900px",
+                                maxWidth: "none",
+                                maxHeight: "400px",
+                                overflow: "auto",
+                                p: 1,
+                              }}
+                            >
+                              <Typography
+                                variant="subtitle2"
+                                sx={{ mb: 1, fontWeight: "bold" }}
+                              >
+                                Transactions for {position.symbol}
+                              </Typography>
+                              {renderTransactionTable(
+                                position.transactions || []
+                              )}
+                            </Box>
+                          }
+                          placement="left"
+                          arrow
+                          componentsProps={{
+                            tooltip: {
+                              sx: {
+                                maxWidth: "none",
+                                backgroundColor: "grey.800",
+                              },
+                            },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              cursor: "help",
+                              "&:hover": {
+                                backgroundColor: "action.hover",
+                              },
+                              p: 0.5,
+                              borderRadius: 1,
+                            }}
                           >
-                            Bought: {position.totalSharesBought}, Sold:{" "}
-                            {position.totalSharesSold || 0}
-                          </Typography>
-                        )}
+                            <Typography variant="body2">
+                              {position.totalTransactions} total
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              {position.equityTransactions || 0} equity,{" "}
+                              {position.totalOptionTransactions || 0} options
+                            </Typography>
+                            {position.totalSharesBought > 0 && (
+                              <Typography
+                                variant="caption"
+                                display="block"
+                                color="textSecondary"
+                              >
+                                Bought: {position.totalSharesBought}, Sold:{" "}
+                                {position.totalSharesSold || 0}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   );
