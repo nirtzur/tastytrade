@@ -852,7 +852,19 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
       await Promise.all(
         openPositions.map(async (position) => {
           try {
-            const quote = await yahooFinance.quote(position.symbol);
+            // For option symbols, extract the underlying stock symbol for Yahoo Finance
+            let yahooSymbol = position.symbol;
+
+            // Check if this is a full option symbol (contains spaces and option format)
+            const optionMatch = position.symbol.match(
+              /^(.+?)\s+(\d{6})([CP])(\d{8})$/
+            );
+            if (optionMatch) {
+              // Extract underlying symbol from option symbol
+              yahooSymbol = optionMatch[1].trim();
+            }
+
+            const quote = await yahooFinance.quote(yahooSymbol);
             yahooFinancePrices[position.symbol] =
               quote.regularMarketPrice || null;
           } catch (error) {
