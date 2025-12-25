@@ -753,6 +753,8 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
       raw: true,
     });
 
+    logInfo(`Fetched ${transactions.length} transactions for aggregation`);
+
     // Group transactions by symbol and calculate position details
     const positionsBySymbol = {};
 
@@ -876,8 +878,12 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
           position.totalOptionTransactions > 0
       );
 
+    logInfo(`Identified ${positionsArray.length} positions after grouping`);
+
     // Fetch Yahoo Finance prices for open positions
     const openPositions = positionsArray.filter((position) => position.isOpen);
+    logInfo(`Found ${openPositions.length} open positions`);
+
     const yahooFinancePrices = {};
 
     if (openPositions.length > 0) {
@@ -902,13 +908,17 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
           } catch (error) {
             logError(
               `Error fetching Yahoo price for ${position.symbol}:`,
-              error
+              error.message
             );
             yahooFinancePrices[position.symbol] = null;
           }
         })
       );
     }
+
+    logInfo(
+      `Fetched prices for ${Object.keys(yahooFinancePrices).length} symbols`
+    );
 
     // Add additional calculations with Yahoo Finance data
     const aggregatedPositions = positionsArray
@@ -1070,6 +1080,23 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
         (a, b) =>
           new Date(b.firstTransactionDate) - new Date(a.firstTransactionDate)
       );
+
+    logInfo(`Returning ${aggregatedPositions.length} aggregated positions`);
+    if (aggregatedPositions.length > 0) {
+      logInfo(
+        "Sample position data (first item):",
+        JSON.stringify(
+          {
+            symbol: aggregatedPositions[0].symbol,
+            isOpen: aggregatedPositions[0].isOpen,
+            totalReturn: aggregatedPositions[0].totalReturn,
+            returnPercentage: aggregatedPositions[0].returnPercentage,
+          },
+          null,
+          2
+        )
+      );
+    }
 
     res.json(aggregatedPositions);
   } catch (error) {
