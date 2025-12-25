@@ -722,12 +722,6 @@ process.on("SIGTERM", () => {
 });
 
 // Initialize database connection when server starts
-if (process.env.DATABASE_URL) {
-  logInfo(
-    "DATABASE_URL (first 10 chars):",
-    process.env.DATABASE_URL.substring(0, 10)
-  );
-}
 
 sequelize
   .authenticate()
