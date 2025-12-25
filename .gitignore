@@ -31,3 +31,7 @@ yarn-error.log*
 ehthumbs.db
 Thumbs.db
 env_variables.yaml
+
+# Railway
+.railway
+

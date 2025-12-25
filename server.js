@@ -158,9 +158,33 @@ async function clearProgressState(sessionId) {
 }
 
 const app = express();
+
+// Dynamic CORS configuration
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  process.env.FRONTEND_URL,
+  process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : null,
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      if (
+        allowedOrigins.indexOf(origin) !== -1 ||
+        process.env.NODE_ENV !== "production"
+      ) {
+        callback(null, true);
+      } else {
+        console.log("Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
@@ -192,6 +216,14 @@ function validateEnvironment() {
       value.includes("${GOOGLE_CLOUD_PROJECT}")
     );
   });
+
+  // Check for database config (either DATABASE_URL or individual vars)
+  if (
+    !process.env.DATABASE_URL &&
+    (!process.env.DB_HOST || !process.env.DB_USERNAME)
+  ) {
+    missing.push("DATABASE_URL or (DB_HOST and DB_USERNAME)");
+  }
 
   if (missing.length > 0) {
     logError("Missing or unresolved environment variables:", missing);

@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "build": "cd frontend && npm install && npm run build",
+    "railway:build": "npm run build",
     "deploy": "npm run build && gcloud app deploy"
   },
   "keywords": [],
