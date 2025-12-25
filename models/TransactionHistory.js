@@ -42,12 +42,24 @@ TransactionHistory.init(
     description: {
       type: DataTypes.TEXT,
     },
+    created_at: {
+      type: "TIMESTAMP",
+      defaultValue: sequelize.literal("CURRENT_TIMESTAMP"),
+      allowNull: false,
+    },
+    updated_at: {
+      type: "TIMESTAMP",
+      defaultValue: sequelize.literal("CURRENT_TIMESTAMP"),
+      allowNull: false,
+    },
   },
   {
     sequelize,
     modelName: "TransactionHistory",
     tableName: "transactions_history",
-    timestamps: false,
+    timestamps: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
   }
 );
 
