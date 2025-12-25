@@ -98,7 +98,6 @@ async function saveProgressState(sessionId, progressData) {
       total: progressData.total || 0,
       symbol: progressData.symbol || null,
       message: progressData.message || null,
-      updated_at: new Date(),
       completed_at:
         progressData.type === "complete" || progressData.type === "error"
           ? new Date()

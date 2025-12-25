@@ -54,8 +54,8 @@ AnalysisResult.init(
       type: DataTypes.TEXT,
     },
     analyzed_at: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
+      type: "TIMESTAMP",
+      defaultValue: sequelize.literal("CURRENT_TIMESTAMP"),
     },
   },
   {

@@ -125,7 +125,6 @@ async function storeAnalysisResult(result) {
       days_to_earnings: result.days_to_earnings,
       status: result.status,
       notes: result.notes.join("; "),
-      analyzed_at: new Date(),
     });
   } catch (error) {
     console.error(`Error storing analysis for ${result.symbol}:`, error);

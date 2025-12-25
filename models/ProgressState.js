@@ -36,14 +36,14 @@ ProgressState.init(
       allowNull: true,
     },
     started_at: {
-      type: DataTypes.DATE,
+      type: "TIMESTAMP",
       allowNull: false,
-      defaultValue: DataTypes.NOW,
+      defaultValue: sequelize.literal("CURRENT_TIMESTAMP"),
     },
     updated_at: {
-      type: DataTypes.DATE,
+      type: "TIMESTAMP",
       allowNull: false,
-      defaultValue: DataTypes.NOW,
+      defaultValue: sequelize.literal("CURRENT_TIMESTAMP"),
     },
     completed_at: {
       type: DataTypes.DATE,

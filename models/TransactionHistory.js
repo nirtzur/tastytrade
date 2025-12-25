@@ -10,8 +10,9 @@ TransactionHistory.init(
       primaryKey: true,
     },
     executed_at: {
-      type: DataTypes.DATE,
+      type: "TIMESTAMP",
       allowNull: false,
+      defaultValue: sequelize.literal("CURRENT_TIMESTAMP"),
     },
     transaction_type: {
       type: DataTypes.STRING,
