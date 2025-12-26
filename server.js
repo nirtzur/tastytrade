@@ -189,6 +189,12 @@ app.use(
 );
 app.use(express.json());
 
+// Request logging middleware
+app.use((req, res, next) => {
+  logInfo(`Incoming request: ${req.method} ${req.url}`);
+  next();
+});
+
 // Load environment variables
 require("dotenv").config();
 
@@ -296,22 +302,6 @@ async function authenticate(req, res, next) {
     logError("Authentication failed:", error);
     res.status(401).json({ error: "Authentication required" });
   }
-}
-
-// Static file serving with proper error handling
-if (process.env.NODE_ENV === "production") {
-  const staticOptions = {
-    maxAge: "1h",
-    setHeaders: (res, path) => {
-      if (path.endsWith(".html")) {
-        res.setHeader("Cache-Control", "no-cache");
-      }
-    },
-  };
-
-  app.use(
-    express.static(path.join(__dirname, "frontend/build"), staticOptions)
-  );
 }
 
 // Enhanced API endpoints with better error handling
@@ -714,38 +704,6 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const PORT = process.env.PORT || 3001;
-
-// Production routing - Catch all handler
-if (process.env.NODE_ENV === "production") {
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "frontend/build/index.html"));
-  });
-}
-
-// Enhanced server startup
-const server = app.listen(PORT, () => {
-  logInfo(`Server starting on port ${PORT}`);
-  logInfo("Node environment:", process.env.NODE_ENV);
-});
-
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  logInfo("SIGTERM signal received: closing HTTP server");
-  server.close(() => {
-    logInfo("HTTP server closed");
-  });
-});
-
-// Initialize database connection when server starts
-
-sequelize
-  .authenticate()
-  .then(() => {
-    logInfo("Database connection established successfully");
-  })
-  .catch((error) => {
-    logError("Unable to connect to the database:", error);
-  });
 
 // Constants
 const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -1232,3 +1190,34 @@ app.get("/api/progress-monitor", authenticate, async (req, res) => {
     });
   }
 });
+
+// Production routing - Catch all handler
+if (process.env.NODE_ENV === "production") {
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "frontend/build/index.html"));
+  });
+}
+
+// Enhanced server startup
+const server = app.listen(PORT, () => {
+  logInfo(`Server starting on port ${PORT}`);
+  logInfo("Node environment:", process.env.NODE_ENV);
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  logInfo("SIGTERM signal received: closing HTTP server");
+  server.close(() => {
+    logInfo("HTTP server closed");
+  });
+});
+
+// Initialize database connection when server starts
+sequelize
+  .authenticate()
+  .then(() => {
+    logInfo("Database connection established successfully");
+  })
+  .catch((error) => {
+    logError("Unable to connect to the database:", error);
+  });
