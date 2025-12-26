@@ -6,7 +6,14 @@ const dbConfig = config[env];
 
 let sequelize;
 if (dbConfig.use_env_variable) {
-  sequelize = new Sequelize(process.env[dbConfig.use_env_variable], {
+  const connectionUrl = process.env[dbConfig.use_env_variable];
+  if (connectionUrl) {
+    console.log(
+      "Initializing Sequelize with URL:",
+      connectionUrl.replace(/:([^:@]+)@/, ":****@")
+    );
+  }
+  sequelize = new Sequelize(connectionUrl, {
     logging: env === "development" ? console.log : false,
     ...dbConfig,
   });

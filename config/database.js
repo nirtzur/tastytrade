@@ -16,6 +16,7 @@ module.exports = {
     host: process.env.DB_HOST,
     dialect: "mysql",
     dialectOptions: {
+      connectTimeout: 60000,
       ssl: {
         require: true,
         rejectUnauthorized: false,
