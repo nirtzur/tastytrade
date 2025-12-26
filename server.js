@@ -697,14 +697,30 @@ app.get("/api/auth/check", authenticate, (req, res) => {
   res.json({ authenticated: true });
 });
 
-// Production routing
+// Production routing - Static files
+if (process.env.NODE_ENV === "production") {
+  const staticOptions = {
+    maxAge: "1h",
+    setHeaders: (res, path) => {
+      if (path.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  };
+
+  app.use(
+    express.static(path.join(__dirname, "frontend/build"), staticOptions)
+  );
+}
+
+const PORT = process.env.PORT || 3001;
+
+// Production routing - Catch all handler
 if (process.env.NODE_ENV === "production") {
   app.get("*", (req, res) => {
     res.sendFile(path.join(__dirname, "frontend/build/index.html"));
   });
 }
-
-const PORT = process.env.PORT || 3001;
 
 // Enhanced server startup
 const server = app.listen(PORT, () => {
