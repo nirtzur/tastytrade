@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Box, Typography, CircularProgress } from "@mui/material";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import {
   LineChart,
@@ -266,22 +264,20 @@ const BalanceChart = () => {
       >
         <Typography variant="h6">Daily Balance</Typography>
         <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <DatePicker
-              label="Start Date"
-              value={startDate}
-              onChange={(newDate) => setStartDate(newDate)}
-              slotProps={{ textField: { size: "small", fullWidth: true } }}
-              sx={{ minWidth: 150 }}
-            />
-            <DatePicker
-              label="End Date"
-              value={endDate}
-              onChange={(newDate) => setEndDate(newDate)}
-              slotProps={{ textField: { size: "small", fullWidth: true } }}
-              sx={{ minWidth: 150 }}
-            />
-          </LocalizationProvider>
+          <DatePicker
+            label="Start Date"
+            value={startDate}
+            onChange={(newDate) => setStartDate(newDate)}
+            slotProps={{ textField: { size: "small", fullWidth: true } }}
+            sx={{ minWidth: 150 }}
+          />
+          <DatePicker
+            label="End Date"
+            value={endDate}
+            onChange={(newDate) => setEndDate(newDate)}
+            slotProps={{ textField: { size: "small", fullWidth: true } }}
+            sx={{ minWidth: 150 }}
+          />
         </Box>
       </Box>
 

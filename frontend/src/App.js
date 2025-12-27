@@ -85,11 +85,21 @@ function App() {
       {!isLoginPage && isAuthenticated && (
         <AppBar position="static" color="default">
           <Box sx={{ display: "flex", alignItems: "center", paddingLeft: 2 }}>
-            <Box sx={{ display: "flex", alignItems: "center", marginRight: 3 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                marginRight: { xs: 1, sm: 3 },
+              }}
+            >
               <PapoyIcon style={{ width: 32, height: 32, marginRight: 8 }} />
               <Typography
                 variant="h6"
-                sx={{ fontWeight: "bold", color: "#1B8EC7" }}
+                sx={{
+                  fontWeight: "bold",
+                  color: "#1B8EC7",
+                  display: { xs: "none", sm: "block" },
+                }}
               >
                 Papoy
               </Typography>
