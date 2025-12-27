@@ -51,9 +51,33 @@ async function syncTransactions() {
       return;
     }
 
+    // Filter out transactions that already exist to avoid duplicates/updates
+    const transactionIds = transactions.map((tx) => tx.id);
+    const existingTransactions = await TransactionHistory.findAll({
+      where: {
+        transaction_id: transactionIds,
+      },
+      attributes: ["transaction_id"],
+      raw: true,
+    });
+
+    const existingIds = new Set(
+      existingTransactions.map((tx) => tx.transaction_id)
+    );
+    const newTransactions = transactions.filter(
+      (tx) => !existingIds.has(tx.id)
+    );
+
+    if (newTransactions.length === 0) {
+      logInfo("No new transactions to sync (all duplicates)");
+      return;
+    }
+
+    logInfo(`Found ${newTransactions.length} new transactions to sync`);
+
     // Use Sequelize's bulkCreate with updateOnDuplicate
     await TransactionHistory.bulkCreate(
-      transactions.map((tx) => ({
+      newTransactions.map((tx) => ({
         transaction_id: tx.id,
         executed_at: new Date(tx["executed-at"]),
         transaction_type: tx["transaction-type"],
