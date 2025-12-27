@@ -14,7 +14,7 @@ if (dbConfig.use_env_variable) {
     );
   }
   sequelize = new Sequelize(connectionUrl, {
-    logging: env === "development" ? console.log : false,
+    logging: console.log,
     ...dbConfig,
   });
 } else {
@@ -23,7 +23,7 @@ if (dbConfig.use_env_variable) {
     dbConfig.username,
     dbConfig.password,
     {
-      logging: env === "development" ? console.log : false,
+      logging: console.log,
       pool: {
         max: 10,
         min: 0,
