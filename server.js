@@ -17,6 +17,7 @@ const sequelize = require("./models");
 const TransactionHistory = require("./models/TransactionHistory");
 const AnalysisResult = require("./models/AnalysisResult");
 const ProgressState = require("./models/ProgressState");
+const DescopeClient = require("@descope/node-sdk");
 
 // Keep track of last sync time
 async function getLastSyncTime() {
@@ -235,7 +236,11 @@ function logError(...args) {
 }
 
 // Validate environment variables
-const REQUIRED_ENV_VARS = ["TASTYTRADE_BASE_URL", "TASTYTRADE_ACCOUNT_NUMBER"];
+const REQUIRED_ENV_VARS = [
+  "TASTYTRADE_BASE_URL",
+  "TASTYTRADE_ACCOUNT_NUMBER",
+  "DESCOPE_PROJECT_ID",
+];
 
 function validateEnvironment() {
   const missing = REQUIRED_ENV_VARS.filter((varName) => {
@@ -272,6 +277,37 @@ try {
 } catch (error) {
   logError("Environment validation failed:", error.message);
 }
+
+// Initialize Descope Client
+const descopeClient = DescopeClient({
+  projectId: process.env.DESCOPE_PROJECT_ID,
+});
+
+// Descope Authentication Middleware
+const requireDescopeAuth = async (req, res, next) => {
+  // Skip auth for login/public endpoints if any (though we protect everything usually)
+  if (req.path === "/api/health") return next();
+
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    logError("No Descope token provided");
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  try {
+    const authInfo = await descopeClient.validateSession(token);
+    req.user = authInfo;
+    next();
+  } catch (error) {
+    logError("Descope authentication failed:", error.message);
+    res.status(401).json({ error: "Invalid session" });
+  }
+};
+
+// Apply Descope auth to all API routes
+app.use("/api", requireDescopeAuth);
 
 // Session management
 let sessionToken = null;
@@ -325,7 +361,18 @@ async function authenticate(req, res, next) {
     next();
   } catch (error) {
     logError("Authentication failed:", error);
-    res.status(401).json({ error: "Authentication required" });
+    // Return specific error code for missing TastyTrade credentials
+    if (
+      error.message === "No remember-me token available" ||
+      error.message.includes("Authentication failed")
+    ) {
+      res.status(401).json({
+        error: "TastyTrade authentication required",
+        code: "TASTYTRADE_AUTH_REQUIRED",
+      });
+    } else {
+      res.status(401).json({ error: "Authentication required" });
+    }
   }
 }
 

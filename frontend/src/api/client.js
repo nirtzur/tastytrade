@@ -2,6 +2,15 @@ const baseURL = process.env.REACT_APP_API_URL;
 
 async function handleResponse(response) {
   if (response.status === 401) {
+    const data = await response
+      .clone()
+      .json()
+      .catch(() => ({}));
+    // If it's a TastyTrade auth error, let the app handle it via the global fetch interceptor
+    if (data.code === "TASTYTRADE_AUTH_REQUIRED") {
+      throw new Error("TastyTrade authentication required");
+    }
+    // Otherwise redirect to login for app authentication issues
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
@@ -16,21 +25,33 @@ async function handleResponse(response) {
 
 const client = {
   async get(path) {
+    const token = localStorage.getItem("DS");
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${baseURL}${path}`, {
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
     });
     const data = await handleResponse(response);
     return { data };
   },
 
   async post(path, body) {
+    const token = localStorage.getItem("DS");
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${baseURL}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
     const data = await handleResponse(response);
