@@ -318,8 +318,11 @@ app.get("/api/account-history", authenticate, async (req, res) => {
     }
 
     // Make end date inclusive by extending it to the end of the day
+    // Only if it's a simple date string (YYYY-MM-DD)
     const endOfDay = new Date(endDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    if (endDate.length === 10) {
+      endOfDay.setHours(23, 59, 59, 999);
+    }
 
     const transactions = await TransactionHistory.findAll({
       where: {

@@ -15,7 +15,8 @@ import client from "../api/client";
 
 const savedStartDate =
   localStorage.getItem("accountHistoryStartDate") || "2024-11-25";
-const defaultEndDate = new Date().toISOString().split("T")[0];
+// Use local date for default end date to avoid timezone issues
+const defaultEndDate = new Date().toLocaleDateString("en-CA");
 
 const TransactionHistory = () => {
   const [history, setHistory] = useState([]);
@@ -35,8 +36,12 @@ const TransactionHistory = () => {
     setLoading(true);
     setError(null);
     try {
+      // Convert local dates to ISO strings with time to ensure full day coverage in UTC
+      const startIso = new Date(startDate + "T00:00:00").toISOString();
+      const endIso = new Date(endDate + "T23:59:59.999").toISOString();
+
       const historyData = await client.get(
-        `/api/account-history?start-date=${startDate}&end-date=${endDate}`
+        `/api/account-history?start-date=${startIso}&end-date=${endIso}`
       );
 
       // Process history data

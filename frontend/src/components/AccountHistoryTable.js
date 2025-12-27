@@ -15,7 +15,8 @@ import client from "../api/client";
 
 const savedStartDate =
   localStorage.getItem("accountHistoryStartDate") || "2024-11-25";
-const defaultEndDate = new Date().toISOString().split("T")[0];
+// Use local date for default end date to avoid timezone issues
+const defaultEndDate = new Date().toLocaleDateString("en-CA");
 
 const AccountHistoryTable = () => {
   const [history, setHistory] = useState([]);
@@ -37,10 +38,15 @@ const AccountHistoryTable = () => {
     setLoading(true);
     setError(null);
     try {
+      // Convert local dates to ISO strings with time to ensure full day coverage in UTC
+      // This handles timezone differences between client (Local) and server (UTC)
+      const startIso = new Date(startDate + "T00:00:00").toISOString();
+      const endIso = new Date(endDate + "T23:59:59.999").toISOString();
+
       // Fetch both sets of data in parallel
       const [historyData, positionsData] = await Promise.all([
         client.get(
-          `/api/account-history?start-date=${startDate}&end-date=${endDate}`
+          `/api/account-history?start-date=${startIso}&end-date=${endIso}`
         ),
         client.get("/api/positions"),
       ]);
