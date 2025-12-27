@@ -52,7 +52,7 @@ async function syncTransactions() {
     }
 
     // Filter out transactions that already exist to avoid duplicates/updates
-    const transactionIds = transactions.map((tx) => tx.id);
+    const transactionIds = transactions.map((tx) => String(tx.id));
     logInfo("Transaction IDs to check:", transactionIds);
     const existingTransactions = await TransactionHistory.findAll({
       where: {
@@ -63,10 +63,10 @@ async function syncTransactions() {
     });
 
     const existingIds = new Set(
-      existingTransactions.map((tx) => tx.transaction_id)
+      existingTransactions.map((tx) => String(tx.transaction_id))
     );
     const newTransactions = transactions.filter(
-      (tx) => !existingIds.has(tx.id)
+      (tx) => !existingIds.has(String(tx.id))
     );
 
     if (newTransactions.length === 0) {
