@@ -80,7 +80,10 @@ const AnalysisTable = () => {
           "Stock Spread": `$${stock_spread || "N/A"}`,
           "Strike Price": `$${option_strike_price || "N/A"}`,
           "Option Mid": `$${option_mid_price || "N/A"}`,
-          "Mid %": `${option_mid_percent}%` || "N/A",
+          "Mid %":
+            option_mid_percent !== null && option_mid_percent !== undefined
+              ? `${Number(option_mid_percent).toFixed(4)}%`
+              : "N/A",
           Expiration: option_expiration_date
             ? new Date(option_expiration_date).toLocaleDateString()
             : "N/A",
