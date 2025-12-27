@@ -260,22 +260,26 @@ const BalanceChart = () => {
           justifyContent: "space-between",
           alignItems: "center",
           mb: 3,
+          flexWrap: "wrap",
+          gap: 2,
         }}
       >
         <Typography variant="h6">Daily Balance</Typography>
-        <Box sx={{ display: "flex", gap: 2 }}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
           <LocalizationProvider dateAdapter={AdapterDayjs}>
             <DatePicker
               label="Start Date"
               value={startDate}
               onChange={(newDate) => setStartDate(newDate)}
-              slotProps={{ textField: { size: "small" } }}
+              slotProps={{ textField: { size: "small", fullWidth: true } }}
+              sx={{ minWidth: 150 }}
             />
             <DatePicker
               label="End Date"
               value={endDate}
               onChange={(newDate) => setEndDate(newDate)}
-              slotProps={{ textField: { size: "small" } }}
+              slotProps={{ textField: { size: "small", fullWidth: true } }}
+              sx={{ minWidth: 150 }}
             />
           </LocalizationProvider>
         </Box>

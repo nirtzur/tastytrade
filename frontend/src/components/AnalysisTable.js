@@ -410,20 +410,28 @@ const AnalysisTable = () => {
           alignItems: "center",
           mb: 2,
           gap: 2,
+          flexWrap: "wrap",
         }}
       >
         <Typography variant="h6">Trading Analysis</Typography>
-        <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+        <Box
+          sx={{
+            display: "flex",
+            gap: 2,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
           <LocalizationProvider dateAdapter={AdapterDayjs}>
             <DatePicker
               label="Analysis Date"
               value={selectedDate}
               onChange={setSelectedDate}
-              slotProps={{ textField: { size: "small" } }}
-              sx={{ minWidth: 200 }}
+              slotProps={{ textField: { size: "small", fullWidth: true } }}
+              sx={{ minWidth: 200, flex: 1 }}
             />
           </LocalizationProvider>
-          <FormControl sx={{ minWidth: 200 }} size="small">
+          <FormControl sx={{ minWidth: 200, flex: 1 }} size="small">
             <InputLabel id="status-filter-label">Filter Status</InputLabel>
             <Select
               labelId="status-filter-label"

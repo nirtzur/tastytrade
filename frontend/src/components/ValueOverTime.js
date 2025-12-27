@@ -318,17 +318,21 @@ const ValueOverTime = () => {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Summary of all transaction per week
       </Typography>
-      <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
+      <Box sx={{ display: "flex", gap: 2, mb: 2, flexWrap: "wrap" }}>
         <LocalizationProvider dateAdapter={AdapterDayjs}>
           <DatePicker
             label="Start Date"
             value={startDate}
             onChange={(newValue) => setStartDate(newValue)}
+            slotProps={{ textField: { fullWidth: true } }}
+            sx={{ flex: 1, minWidth: 200 }}
           />
           <DatePicker
             label="End Date"
             value={endDate}
             onChange={(newValue) => setEndDate(newValue)}
+            slotProps={{ textField: { fullWidth: true } }}
+            sx={{ flex: 1, minWidth: 200 }}
           />
         </LocalizationProvider>
       </Box>

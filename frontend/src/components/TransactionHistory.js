@@ -144,6 +144,7 @@ const TransactionHistory = () => {
           onChange={(e) => setStartDate(e.target.value)}
           InputLabelProps={{ shrink: true }}
           disabled={loading || syncing}
+          sx={{ minWidth: 150 }}
         />
         <TextField
           label="End Date"
@@ -152,28 +153,27 @@ const TransactionHistory = () => {
           onChange={(e) => setEndDate(e.target.value)}
           InputLabelProps={{ shrink: true }}
           disabled={loading || syncing}
+          sx={{ minWidth: 150 }}
         />
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={showMoneyMovement}
-              onChange={(e) => setShowMoneyMovement(e.target.checked)}
-              disabled={loading}
-            />
-          }
-          label="Show Money Movement"
-        />
-        <Tooltip title="Sync latest transactions">
-          <span>
-            <IconButton
-              onClick={handleSync}
-              disabled={syncing || loading}
-              sx={{ ml: "auto" }}
-            >
-              {syncing ? <CircularProgress size={24} /> : <RefreshIcon />}
-            </IconButton>
-          </span>
-        </Tooltip>
+        <Box sx={{ display: "flex", alignItems: "center" }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={showMoneyMovement}
+                onChange={(e) => setShowMoneyMovement(e.target.checked)}
+                disabled={loading}
+              />
+            }
+            label="Show Money Movement"
+          />
+          <Tooltip title="Sync latest transactions">
+            <span>
+              <IconButton onClick={handleSync} disabled={syncing || loading}>
+                {syncing ? <CircularProgress size={24} /> : <RefreshIcon />}
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* Value Summary */}

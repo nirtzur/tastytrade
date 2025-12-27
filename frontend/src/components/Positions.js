@@ -272,6 +272,7 @@ function Positions() {
         justifyContent="space-between"
         alignItems="center"
         mb={3}
+        sx={{ flexWrap: "wrap", gap: 2 }}
       >
         <Typography variant="h4" component="h1">
           Position History & Summary

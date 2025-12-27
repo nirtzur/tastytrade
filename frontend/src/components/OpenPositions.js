@@ -140,6 +140,8 @@ function OpenPositions() {
           justifyContent: "space-between",
           alignItems: "center",
           mb: 3,
+          flexWrap: "wrap",
+          gap: 2,
         }}
       >
         <Typography variant="h5">Open Positions</Typography>

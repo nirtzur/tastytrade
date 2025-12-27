@@ -104,7 +104,15 @@ function Funding() {
         {/* Loan Overview */}
         <Grid item xs={12}>
           <Paper elevation={3} sx={{ p: 3 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                mb: 2,
+                flexWrap: "wrap",
+              }}
+            >
               <Typography variant="h5">Grace Loan Overview</Typography>
               <Chip
                 label="Interest-Only Payments"

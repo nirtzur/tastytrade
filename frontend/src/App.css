@@ -17,6 +17,21 @@
   min-width: 400px;
 }
 
+@media (max-width: 768px) {
+  .tables-container {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .table-section {
+    min-width: 100%;
+  }
+  
+  .App-header {
+    font-size: calc(10px + 4vmin);
+  }
+}
+
 .table-section h2 {
   margin-bottom: 20px;
   color: #333;

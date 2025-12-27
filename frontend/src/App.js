@@ -6,7 +6,16 @@ import {
   useNavigate,
   useLocation,
 } from "react-router-dom";
-import { AppBar, Tabs, Tab, Box, Typography, Button } from "@mui/material";
+import {
+  AppBar,
+  Tabs,
+  Tab,
+  Box,
+  Typography,
+  IconButton,
+  Tooltip,
+} from "@mui/material";
+import { Logout } from "@mui/icons-material";
 import TransactionHistory from "./components/TransactionHistory";
 import OpenPositions from "./components/OpenPositions";
 import VisualPage from "./components/VisualPage";
@@ -90,6 +99,9 @@ function App() {
               onChange={handleTabChange}
               indicatorColor="primary"
               textColor="primary"
+              variant="scrollable"
+              scrollButtons="auto"
+              allowScrollButtonsMobile
             >
               <Tab label="Transaction History" value="/transaction-history" />
               <Tab label="Open Positions" value="/open-positions" />
@@ -101,9 +113,11 @@ function App() {
               <Tab label="Funding" value="/funding" />
             </Tabs>
             <Box sx={{ flexGrow: 1 }} />
-            <Button color="inherit" onClick={handleLogout} sx={{ mr: 2 }}>
-              Logout
-            </Button>
+            <Tooltip title="Logout">
+              <IconButton color="inherit" onClick={handleLogout} sx={{ mr: 2 }}>
+                <Logout />
+              </IconButton>
+            </Tooltip>
           </Box>
         </AppBar>
       )}
