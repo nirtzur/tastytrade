@@ -194,10 +194,11 @@ const AnalysisTable = () => {
 
           // For existing progress, we need to connect to SSE in monitoring mode
           // We'll create a special endpoint or use a parameter to indicate we're monitoring
+          const token = localStorage.getItem("DS");
           const monitorEventSource = new EventSource(
             `${
               process.env.REACT_APP_API_URL || "http://localhost:3001"
-            }/api/progress-monitor?sessionId=${data.sessionId}`,
+            }/api/progress-monitor?sessionId=${data.sessionId}&token=${token}`,
             {
               withCredentials: true,
             }
@@ -286,11 +287,13 @@ const AnalysisTable = () => {
       setError(null);
       setProgressInfo(null);
 
+      const token = localStorage.getItem("DS");
+
       // Use EventSource for Server-Sent Events
       const eventSource = new EventSource(
         `${
           process.env.REACT_APP_API_URL || "http://localhost:3001"
-        }/api/trading-data/refresh`,
+        }/api/trading-data/refresh?token=${token}`,
         {
           withCredentials: true,
         }

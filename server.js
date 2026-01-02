@@ -289,7 +289,12 @@ const requireDescopeAuth = async (req, res, next) => {
   if (req.path === "/api/health") return next();
 
   const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
+  let token = authHeader && authHeader.split(" ")[1];
+
+  // Also check query parameter for EventSource connections
+  if (!token && req.query.token) {
+    token = req.query.token;
+  }
 
   if (!token) {
     logError("No Descope token provided");
