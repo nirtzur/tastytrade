@@ -539,31 +539,53 @@ app.get("/api/positions", authenticate, async (req, res) => {
     logInfo("Fetching positions");
     const positions = await getPositions(sessionToken);
 
-    // Fetch Yahoo Finance prices for all symbols
-    const symbolPrices = await Promise.all(
-      positions.map(async (position) => {
-        try {
-          const quote = await yahooFinance.quote(position.symbol);
-          return {
-            symbol: position.symbol,
-            yahooPrice: quote.regularMarketPrice,
-          };
-        } catch (error) {
-          logError(`Error fetching Yahoo price for ${position.symbol}:`, error);
-          return {
-            symbol: position.symbol,
-            yahooPrice: null,
-          };
-        }
-      })
-    );
+    // Extract unique underlying symbols to minimize API calls
+    const uniqueSymbols = [
+      ...new Set(
+        positions.map((p) => {
+          const optionMatch = p.symbol.match(/^(.+?)\s+(\d{6})([CP])(\d{8})$/);
+          return optionMatch ? optionMatch[1].trim() : p.symbol;
+        })
+      ),
+    ];
+
+    logInfo(`Fetching Yahoo prices for ${uniqueSymbols.length} unique symbols`);
+
+    const priceMap = {};
+    const batchSize = 5;
+
+    // Process in batches to avoid rate limits
+    for (let i = 0; i < uniqueSymbols.length; i += batchSize) {
+      const batch = uniqueSymbols.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (symbol) => {
+          try {
+            const quote = await yahooFinance.quote(symbol);
+            priceMap[symbol] = quote.regularMarketPrice;
+          } catch (error) {
+            logError(`Error fetching Yahoo price for ${symbol}:`, error);
+            priceMap[symbol] = null;
+          }
+        })
+      );
+
+      // Small delay between batches
+      if (i + batchSize < uniqueSymbols.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
 
     // Add Yahoo prices to positions data
     const positionsWithYahoo = positions.map((position) => {
-      const yahooData = symbolPrices.find((p) => p.symbol === position.symbol);
+      const optionMatch = position.symbol.match(
+        /^(.+?)\s+(\d{6})([CP])(\d{8})$/
+      );
+      const underlyingSymbol = optionMatch
+        ? optionMatch[1].trim()
+        : position.symbol;
       return {
         ...position,
-        yahoo_price: yahooData?.yahooPrice || null,
+        yahoo_price: priceMap[underlyingSymbol] || null,
       };
     });
 
