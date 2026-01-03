@@ -1,16 +1,16 @@
 steps:
   # Install dependencies
-  - name: 'node:20'
+  - name: 'node:25'
     entrypoint: npm
     args: ['install']
 
   # Install frontend dependencies and build
-  - name: 'node:20'
+  - name: 'node:25'
     entrypoint: npm
     args: ['install']
     dir: 'frontend'
   
-  - name: 'node:20'
+  - name: 'node:25'
     entrypoint: 'bash'
     args:
       - '-c'

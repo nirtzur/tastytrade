@@ -24,6 +24,7 @@ import ValueOverTime from "./components/ValueOverTime";
 import BalanceChart from "./components/BalanceChart";
 import Positions from "./components/Positions";
 import Funding from "./components/Funding";
+import AIPage from "./components/AIPage";
 import LoginPage from "./components/LoginPage";
 import { ReactComponent as PapoyIcon } from "./papoy-icon.svg";
 import { useSession, useDescope } from "@descope/react-sdk";
@@ -121,6 +122,7 @@ function App() {
               <Tab label="Weekly Options" value="/visual" />
               <Tab label="Positions" value="/positions" />
               <Tab label="Funding" value="/funding" />
+              <Tab label="AI" value="/ai" />
             </Tabs>
             <Box sx={{ flexGrow: 1 }} />
             <Tooltip title="Logout">
@@ -199,6 +201,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Funding />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai"
+            element={
+              <ProtectedRoute>
+                <AIPage />
               </ProtectedRoute>
             }
           />
