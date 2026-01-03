@@ -18,7 +18,7 @@
   "license": "ISC",
   "dependencies": {
     "@descope/node-sdk": "^1.7.21",
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^1.34.0",
     "axios": "^1.8.4",
     "chalk": "^4.1.2",
     "cors": "^2.8.5",

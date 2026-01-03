@@ -3,7 +3,7 @@ require("dotenv").config();
 const cors = require("cors");
 const path = require("path");
 const YahooFinance = require("yahoo-finance2").default;
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenAI } = require("@google/genai");
 
 // Create a YahooFinance instance with custom User-Agent
 const yahooFinance = new YahooFinance({
@@ -1330,8 +1330,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
     });
 
     // 3. Consult Gemini
-    const genAI = new GoogleGenerativeAI(token);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const genAI = new GoogleGenAI({ apiKey: token });
 
     const prompt = `
       I need your help to allocate my portfolio for Cash Secured Puts.
@@ -1368,9 +1367,11 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       return res.json({ prompt });
     }
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const result = await genAI.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+    const text = result.text;
 
     res.json({ analysis: text });
   } catch (error) {
