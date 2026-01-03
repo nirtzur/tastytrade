@@ -1,7 +1,18 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const yahooFinance = require("yahoo-finance2").default;
+const YahooFinance = require("yahoo-finance2").default;
+
+// Create a YahooFinance instance with custom User-Agent
+const yahooFinance = new YahooFinance({
+  fetchOptions: {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
+  },
+});
+
 const {
   initializeTastytrade,
   getAccountHistory,
@@ -18,6 +29,33 @@ const TransactionHistory = require("./models/TransactionHistory");
 const AnalysisResult = require("./models/AnalysisResult");
 const ProgressState = require("./models/ProgressState");
 const DescopeClient = require("@descope/node-sdk");
+
+// Helper function to fetch Yahoo price with retry logic
+async function fetchYahooPriceWithRetry(symbol, maxRetries = 3) {
+  let retries = 0;
+  while (retries < maxRetries) {
+    try {
+      const quote = await yahooFinance.quote(symbol);
+      return quote.regularMarketPrice;
+    } catch (error) {
+      const isRateLimit =
+        error.message.includes("Too Many Requests") ||
+        error.message.includes("Unexpected token 'T'") ||
+        error.message.includes("Unexpected token T");
+
+      if (isRateLimit && retries < maxRetries - 1) {
+        retries++;
+        const delay = 3000 * Math.pow(2, retries); // Increased base delay from 2000 to 3000
+        logInfo(
+          `Rate limit hit for ${symbol}, retrying in ${delay}ms (Attempt ${retries}/${maxRetries})`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
 
 // Keep track of last sync time
 async function getLastSyncTime() {
@@ -552,7 +590,7 @@ app.get("/api/positions", authenticate, async (req, res) => {
     logInfo(`Fetching Yahoo prices for ${uniqueSymbols.length} unique symbols`);
 
     const priceMap = {};
-    const batchSize = 5;
+    const batchSize = 2; // Reduced from 5 to 2
 
     // Process in batches to avoid rate limits
     for (let i = 0; i < uniqueSymbols.length; i += batchSize) {
@@ -560,18 +598,21 @@ app.get("/api/positions", authenticate, async (req, res) => {
       await Promise.all(
         batch.map(async (symbol) => {
           try {
-            const quote = await yahooFinance.quote(symbol);
-            priceMap[symbol] = quote.regularMarketPrice;
+            const price = await fetchYahooPriceWithRetry(symbol);
+            priceMap[symbol] = price;
           } catch (error) {
-            logError(`Error fetching Yahoo price for ${symbol}:`, error);
+            logError(
+              `Error fetching Yahoo price for ${symbol}:`,
+              error.message
+            ); // Log message only to reduce noise
             priceMap[symbol] = null;
           }
         })
       );
 
-      // Small delay between batches
+      // Increased delay between batches
       if (i + batchSize < uniqueSymbols.length) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 2000)); // Increased from 500ms to 2000ms
       }
     }
 
@@ -980,7 +1021,7 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
       );
 
       const priceMap = {};
-      const batchSize = 5;
+      const batchSize = 2; // Reduced from 5 to 2
 
       // Process in batches
       for (let i = 0; i < uniqueSymbols.length; i += batchSize) {
@@ -988,17 +1029,20 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
         await Promise.all(
           batch.map(async (symbol) => {
             try {
-              const quote = await yahooFinance.quote(symbol);
-              priceMap[symbol] = quote.regularMarketPrice;
+              const price = await fetchYahooPriceWithRetry(symbol);
+              priceMap[symbol] = price;
             } catch (error) {
-              logError(`Error fetching Yahoo price for ${symbol}:`, error);
+              logError(
+                `Error fetching Yahoo price for ${symbol}:`,
+                error.message
+              );
               priceMap[symbol] = null;
             }
           })
         );
 
         if (i + batchSize < uniqueSymbols.length) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 2000)); // Increased from 500ms to 2000ms
         }
       }
 

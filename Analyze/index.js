@@ -1,7 +1,17 @@
 const axios = require("axios");
 const chalk = require("chalk");
 const mysql = require("mysql2/promise");
-const yahooFinance = require("yahoo-finance2").default;
+const YahooFinance = require("yahoo-finance2").default;
+
+const yahooFinance = new YahooFinance({
+  fetchOptions: {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
+  },
+});
+
 const {
   initializeTastytrade,
   getQuote,
@@ -34,29 +44,58 @@ const pool = mysql.createPool({
 
 // Add function to get days to earnings date
 async function getDaysToEarnings(symbol) {
-  try {
-    const result = await yahooFinance.quote(symbol, {
-      fields: ["earningsTimestamp"],
-    });
+  const maxRetries = 3;
+  let retries = 0;
 
-    if (!result.earningsTimestamp) {
+  while (retries < maxRetries) {
+    try {
+      // Add a small delay before each request to avoid rate limits
+      await sleep(1000);
+
+      const result = await yahooFinance.quote(symbol, {
+        fields: ["earningsTimestamp"],
+      });
+
+      if (!result.earningsTimestamp) {
+        return null;
+      }
+      const today = new Date();
+      const daysToEarnings = Math.ceil(
+        (result.earningsTimestamp - today) / (1000 * 60 * 60 * 24)
+      );
+
+      return daysToEarnings;
+    } catch (error) {
+      // Check if it's a rate limit error (or the specific JSON error we're seeing)
+      const isRateLimit =
+        error.message.includes("Too Many Requests") ||
+        error.message.includes("Unexpected token 'T'") ||
+        error.message.includes("Unexpected token T");
+
+      if (isRateLimit && retries < maxRetries - 1) {
+        retries++;
+        const delay = 2000 * Math.pow(2, retries); // Exponential backoff
+        if (isDebug) {
+          console.log(
+            `Rate limit hit for ${symbol}, retrying in ${delay}ms (Attempt ${
+              retries + 1
+            }/${maxRetries})`
+          );
+        }
+        await sleep(delay);
+        continue;
+      }
+
+      if (isDebug) {
+        console.error(
+          `Failed to get earnings date for ${symbol}:`,
+          error.message
+        );
+      }
       return null;
     }
-    const today = new Date();
-    const daysToEarnings = Math.ceil(
-      (result.earningsTimestamp - today) / (1000 * 60 * 60 * 24)
-    );
-
-    return daysToEarnings;
-  } catch (error) {
-    if (isDebug) {
-      console.error(
-        `Failed to get earnings date for ${symbol}:`,
-        error.message
-      );
-    }
-    return null;
   }
+  return null;
 }
 
 // Parse command line arguments
