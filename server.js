@@ -963,33 +963,56 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
     const yahooFinancePrices = {};
 
     if (openPositions.length > 0) {
-      await Promise.all(
-        openPositions.map(async (position) => {
-          try {
-            // For option symbols, extract the underlying stock symbol for Yahoo Finance
-            let yahooSymbol = position.symbol;
-
-            // Check if this is a full option symbol (contains spaces and option format)
-            const optionMatch = position.symbol.match(
+      // Extract unique underlying symbols
+      const uniqueSymbols = [
+        ...new Set(
+          openPositions.map((p) => {
+            const optionMatch = p.symbol.match(
               /^(.+?)\s+(\d{6})([CP])(\d{8})$/
             );
-            if (optionMatch) {
-              // Extract underlying symbol from option symbol
-              yahooSymbol = optionMatch[1].trim();
-            }
+            return optionMatch ? optionMatch[1].trim() : p.symbol;
+          })
+        ),
+      ];
 
-            const quote = await yahooFinance.quote(yahooSymbol);
-            yahooFinancePrices[position.symbol] =
-              quote.regularMarketPrice || null;
-          } catch (error) {
-            logError(
-              `Error fetching Yahoo price for ${position.symbol}:`,
-              error.message
-            );
-            yahooFinancePrices[position.symbol] = null;
-          }
-        })
+      logInfo(
+        `Fetching Yahoo prices for ${uniqueSymbols.length} unique symbols (aggregated)`
       );
+
+      const priceMap = {};
+      const batchSize = 5;
+
+      // Process in batches
+      for (let i = 0; i < uniqueSymbols.length; i += batchSize) {
+        const batch = uniqueSymbols.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (symbol) => {
+            try {
+              const quote = await yahooFinance.quote(symbol);
+              priceMap[symbol] = quote.regularMarketPrice;
+            } catch (error) {
+              logError(`Error fetching Yahoo price for ${symbol}:`, error);
+              priceMap[symbol] = null;
+            }
+          })
+        );
+
+        if (i + batchSize < uniqueSymbols.length) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+
+      // Map back to positions
+      openPositions.forEach((position) => {
+        const optionMatch = position.symbol.match(
+          /^(.+?)\s+(\d{6})([CP])(\d{8})$/
+        );
+        const underlyingSymbol = optionMatch
+          ? optionMatch[1].trim()
+          : position.symbol;
+        yahooFinancePrices[position.symbol] =
+          priceMap[underlyingSymbol] || null;
+      });
     }
 
     logInfo(
