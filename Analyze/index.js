@@ -1,16 +1,11 @@
 const axios = require("axios");
 const chalk = require("chalk");
 const mysql = require("mysql2/promise");
-const YahooFinance = require("yahoo-finance2").default;
+require("dotenv").config();
+const finnhub = require("finnhub");
 
-const yahooFinance = new YahooFinance({
-  fetchOptions: {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    },
-  },
-});
+const finnhubClient = new finnhub.DefaultApi();
+finnhubClient.apiKey = process.env.FINNHUB_API_KEY;
 
 const {
   initializeTastytrade,
@@ -22,8 +17,6 @@ const { getSP500Symbols } = require("./sp500");
 const { getSectorETFs } = require("./etfs");
 const sleep = require("./utils/sleep");
 const AnalysisResult = require("../models/AnalysisResult");
-
-require("dotenv").config();
 
 // Trading parameters from environment variables
 const MIN_STOCK_PRICE = parseFloat(process.env.MIN_STOCK_PRICE) || 30;
@@ -52,25 +45,57 @@ async function getDaysToEarnings(symbol) {
       // Add a small delay before each request to avoid rate limits
       await sleep(1000);
 
-      const result = await yahooFinance.quote(symbol, {
-        fields: ["earningsTimestamp"],
+      const today = new Date();
+      const threeMonthsLater = new Date();
+      threeMonthsLater.setMonth(today.getMonth() + 3);
+
+      const from = today.toISOString().split("T")[0];
+      const to = threeMonthsLater.toISOString().split("T")[0];
+
+      const earnings = await new Promise((resolve, reject) => {
+        finnhubClient.earningsCalendar(
+          { from, to, symbol },
+          (error, data, response) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(data);
+            }
+          }
+        );
       });
 
-      if (!result.earningsTimestamp) {
+      if (
+        !earnings ||
+        !earnings.earningsCalendar ||
+        earnings.earningsCalendar.length === 0
+      ) {
         return null;
       }
-      const today = new Date();
+
+      // Sort by date just in case
+      const sortedEarnings = earnings.earningsCalendar.sort(
+        (a, b) => new Date(a.date) - new Date(b.date)
+      );
+
+      // Find the first future earnings date
+      const nextEarnings = sortedEarnings.find(
+        (e) => new Date(e.date) >= today
+      );
+
+      if (!nextEarnings) {
+        return null;
+      }
+
+      const earningsDate = new Date(nextEarnings.date);
       const daysToEarnings = Math.ceil(
-        (result.earningsTimestamp - today) / (1000 * 60 * 60 * 24)
+        (earningsDate - today) / (1000 * 60 * 60 * 24)
       );
 
       return daysToEarnings;
     } catch (error) {
-      // Check if it's a rate limit error (or the specific JSON error we're seeing)
-      const isRateLimit =
-        error.message.includes("Too Many Requests") ||
-        error.message.includes("Unexpected token 'T'") ||
-        error.message.includes("Unexpected token T");
+      // Check if it's a rate limit error
+      const isRateLimit = error.status === 429;
 
       if (isRateLimit && retries < maxRetries - 1) {
         retries++;

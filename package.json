@@ -24,11 +24,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.18.2",
+    "finnhub": "^2.0.12",
     "mysql2": "^3.14.1",
     "node-fetch": "^2.7.0",
     "sequelize": "^6.37.7",
     "sequelize-cli": "^6.6.3",
-    "ws": "^8.18.1",
-    "yahoo-finance2": "^3.11.2"
+    "ws": "^8.18.1"
   }
 }

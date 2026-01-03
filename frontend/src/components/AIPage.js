@@ -8,7 +8,6 @@ import {
   CircularProgress,
   Alert,
 } from "@mui/material";
-import ReactMarkdown from "react-markdown";
 import client from "../api/client";
 
 const AIPage = () => {
@@ -117,8 +116,31 @@ const AIPage = () => {
           <Typography variant="h6" gutterBottom>
             Analysis Result
           </Typography>
-          <Box sx={{ "& pre": { overflowX: "auto" } }}>
-            <ReactMarkdown>{response}</ReactMarkdown>
+          <Box
+            sx={{
+              "& table": {
+                width: "100%",
+                borderCollapse: "collapse",
+                marginTop: 2,
+                marginBottom: 2,
+              },
+              "& th": {
+                border: "1px solid #ddd",
+                padding: 1,
+                backgroundColor: "#f5f5f5",
+                fontWeight: "bold",
+                color: "black",
+              },
+              "& td": { border: "1px solid #ddd", padding: 1 },
+              "& tr:nth-of-type(even)": { backgroundColor: "#fafafa" },
+              "& tr:hover": { backgroundColor: "#f0f0f0" },
+            }}
+          >
+            <div
+              dangerouslySetInnerHTML={{
+                __html: response.replace(/```html/g, "").replace(/```/g, ""),
+              }}
+            />
           </Box>
         </Paper>
       )}

@@ -2,18 +2,12 @@ const express = require("express");
 require("dotenv").config();
 const cors = require("cors");
 const path = require("path");
-const YahooFinance = require("yahoo-finance2").default;
+const finnhub = require("finnhub");
 const { GoogleGenAI } = require("@google/genai");
 
-// Create a YahooFinance instance with custom User-Agent
-const yahooFinance = new YahooFinance({
-  fetchOptions: {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    },
-  },
-});
+// Configure Finnhub
+const finnhubClient = new finnhub.DefaultApi();
+finnhubClient.apiKey = process.env.FINNHUB_API_KEY;
 
 const {
   initializeTastytrade,
@@ -32,18 +26,27 @@ const AnalysisResult = require("./models/AnalysisResult");
 const ProgressState = require("./models/ProgressState");
 const DescopeClient = require("@descope/node-sdk");
 
-// Helper function to fetch Yahoo price with retry logic
-async function fetchYahooPriceWithRetry(symbol, maxRetries = 2) {
+// Helper function to fetch Finnhub price with retry logic
+async function fetchFinnhubPriceWithRetry(symbol, maxRetries = 2) {
   let retries = 0;
   while (retries < maxRetries) {
     try {
-      const quote = await yahooFinance.quote(symbol);
-      return quote.regularMarketPrice;
+      logInfo(`Fetching Finnhub price for: ${symbol}`);
+      const quote = await new Promise((resolve, reject) => {
+        finnhubClient.quote(symbol, (error, data, response) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(data);
+          }
+        });
+      });
+      // Finnhub returns c (current price)
+      return quote.c;
     } catch (error) {
       const isRateLimit =
-        error.message.includes("Too Many Requests") ||
-        error.message.includes("Unexpected token 'T'") ||
-        error.message.includes("Unexpected token T");
+        error.status === 429 ||
+        (error.message && error.message.includes("Too Many Requests"));
 
       if (isRateLimit && retries < maxRetries - 1) {
         retries++;
@@ -589,7 +592,9 @@ app.get("/api/positions", authenticate, async (req, res) => {
       ),
     ];
 
-    logInfo(`Fetching Yahoo prices for ${uniqueSymbols.length} unique symbols`);
+    logInfo(
+      `Fetching Finnhub prices for ${uniqueSymbols.length} unique symbols`
+    );
 
     const priceMap = {};
     const batchSize = 2; // Reduced from 5 to 2
@@ -600,11 +605,11 @@ app.get("/api/positions", authenticate, async (req, res) => {
       await Promise.all(
         batch.map(async (symbol) => {
           try {
-            const price = await fetchYahooPriceWithRetry(symbol);
+            const price = await fetchFinnhubPriceWithRetry(symbol);
             priceMap[symbol] = price;
           } catch (error) {
             logError(
-              `Error fetching Yahoo price for ${symbol}:`,
+              `Error fetching Finnhub price for ${symbol}:`,
               error.message
             ); // Log message only to reduce noise
             priceMap[symbol] = null;
@@ -618,8 +623,8 @@ app.get("/api/positions", authenticate, async (req, res) => {
       }
     }
 
-    // Add Yahoo prices to positions data
-    const positionsWithYahoo = positions.map((position) => {
+    // Add Finnhub prices to positions data
+    const positionsWithPrices = positions.map((position) => {
       const optionMatch = position.symbol.match(
         /^(.+?)\s+(\d{6})([CP])(\d{8})$/
       );
@@ -628,11 +633,11 @@ app.get("/api/positions", authenticate, async (req, res) => {
         : position.symbol;
       return {
         ...position,
-        yahoo_price: priceMap[underlyingSymbol] || null,
+        current_price: priceMap[underlyingSymbol] || null,
       };
     });
 
-    res.json(positionsWithYahoo);
+    res.json(positionsWithPrices);
   } catch (error) {
     logError("Error fetching positions:", error);
     res.status(500).json({
@@ -997,11 +1002,11 @@ async function fetchAggregatedPositions() {
 
   logInfo(`Identified ${positionsArray.length} positions after grouping`);
 
-  // Fetch Yahoo Finance prices for open positions
+  // Fetch Finnhub prices for open positions
   const openPositions = positionsArray.filter((position) => position.isOpen);
   logInfo(`Found ${openPositions.length} open positions`);
 
-  const yahooFinancePrices = {};
+  const finnhubPrices = {};
 
   if (openPositions.length > 0) {
     // Extract unique underlying symbols
@@ -1015,7 +1020,7 @@ async function fetchAggregatedPositions() {
     ];
 
     logInfo(
-      `Fetching Yahoo prices for ${uniqueSymbols.length} unique symbols (aggregated)`
+      `Fetching Finnhub prices for ${uniqueSymbols.length} unique symbols (aggregated)`
     );
 
     const priceMap = {};
@@ -1027,11 +1032,11 @@ async function fetchAggregatedPositions() {
       await Promise.all(
         batch.map(async (symbol) => {
           try {
-            const price = await fetchYahooPriceWithRetry(symbol);
+            const price = await fetchFinnhubPriceWithRetry(symbol);
             priceMap[symbol] = price;
           } catch (error) {
             logError(
-              `Error fetching Yahoo price for ${symbol}:`,
+              `Error fetching Finnhub price for ${symbol}:`,
               error.message
             );
             priceMap[symbol] = null;
@@ -1052,15 +1057,13 @@ async function fetchAggregatedPositions() {
       const underlyingSymbol = optionMatch
         ? optionMatch[1].trim()
         : position.symbol;
-      yahooFinancePrices[position.symbol] = priceMap[underlyingSymbol] || null;
+      finnhubPrices[position.symbol] = priceMap[underlyingSymbol] || null;
     });
   }
 
-  logInfo(
-    `Fetched prices for ${Object.keys(yahooFinancePrices).length} symbols`
-  );
+  logInfo(`Fetched prices for ${Object.keys(finnhubPrices).length} symbols`);
 
-  // Add additional calculations with Yahoo Finance data
+  // Add additional calculations with Finnhub data
   const aggregatedPositions = positionsArray
     .map((position) => {
       // Calculate realized P&L
@@ -1106,7 +1109,7 @@ async function fetchAggregatedPositions() {
       }
 
       // Get current market value for open positions
-      const currentPrice = yahooFinancePrices[position.symbol];
+      const currentPrice = finnhubPrices[position.symbol];
       let effectivePrice = currentPrice;
 
       // Adjust effective price for options: cap/floor at strike for both calls and puts
@@ -1349,7 +1352,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
             a.days_to_earnings < 0
               ? `Last earnings ${Math.abs(a.days_to_earnings)} days ago`
               : `Earnings in ${a.days_to_earnings} days`;
-          return `- ${a.symbol}: Price $${a.stock_price}, Strike $${a.strike_price}, Mid % ${a.option_mid_percent}%, ${earningsInfo}`;
+          return `- ${a.symbol}: Price $${a.current_price}, Strike $${a.option_strike_price}, Mid % ${a.option_mid_percent}%, ${earningsInfo}`;
         })
         .join("\n")}
 
@@ -1358,8 +1361,11 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       - Each allocation should be between $20,000 and $40,000.
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %'.
-      - Do not recommend symbols I already have open positions for.
-      - Provide the output as a markdown table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %.
+      - You may recommend symbols I already have open positions for.
+      - The total sum of all recommended allocations must not exceed $${totalAllocation.toFixed(
+        2
+      )}.
+      - Provide the output as an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %.
       - Also provide a brief reasoning for the selection.
     `;
 

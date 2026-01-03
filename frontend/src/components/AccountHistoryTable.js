@@ -87,15 +87,15 @@ const AccountHistoryTable = () => {
             "close-price": rawStrikePrice,
             "option-price": rawOptionPrice,
             "average-open-price": rawAcquisitionPrice,
-            yahoo_price: rawYahooPrice,
+            current_price: rawCurrentPrice,
           }) => {
             const strikePrice = parseFloat(rawStrikePrice) || 0;
             const optionPrice = parseFloat(rawOptionPrice) || 0;
             const acquisitionPrice = parseFloat(rawAcquisitionPrice) || 0;
-            const yahooPrice = parseFloat(rawYahooPrice) || 0;
+            const currentPriceVal = parseFloat(rawCurrentPrice) || 0;
             const quantity = parseFloat(rawQuantity) || 0;
-            // Use yahoo price if available, otherwise use the strike price
-            const currentPrice = yahooPrice || strikePrice;
+            // Use current price if available, otherwise use the strike price
+            const currentPrice = currentPriceVal || strikePrice;
             // Use the minimum between currentPrice and optionPrice for value calculation
             const priceForValue = Math.min(
               currentPrice,
@@ -113,7 +113,9 @@ const AccountHistoryTable = () => {
                 ? `$${optionPrice.toFixed(2)}`
                 : "N/A",
               "Acquisition Price": `$${acquisitionPrice.toFixed(2)}`,
-              "Yahoo Price": yahooPrice ? `$${yahooPrice.toFixed(2)}` : "N/A",
+              "Current Price": currentPriceVal
+                ? `$${currentPriceVal.toFixed(2)}`
+                : "N/A",
               Value: `$${value.toFixed(2)}`,
               "P/L": `$${profitLoss.toFixed(2)}`,
             };
@@ -296,7 +298,7 @@ const AccountHistoryTable = () => {
               "Strike Price",
               "Option Price",
               "Acquisition Price",
-              "Yahoo Price",
+              "Current Price",
               "Value",
               "P/L",
             ]}
