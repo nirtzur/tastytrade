@@ -1375,11 +1375,21 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       return res.json({ prompt });
     }
 
+    let contents;
+    if (req.body.messages) {
+      contents = req.body.messages;
+    } else if (req.body.customPrompt) {
+      contents = [{ role: "user", parts: [{ text: req.body.customPrompt }] }];
+    } else {
+      contents = [{ role: "user", parts: [{ text: prompt }] }];
+    }
+
     const result = await genAI.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: prompt,
+      contents: contents,
     });
-    const text = result.text;
+
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     res.json({ analysis: text });
   } catch (error) {

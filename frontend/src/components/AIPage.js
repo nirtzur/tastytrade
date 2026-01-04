@@ -15,11 +15,14 @@ const AIPage = () => {
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState("");
   const [error, setError] = useState(null);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [followUp, setFollowUp] = useState("");
 
   const handlePreview = async () => {
     setLoading(true);
     setError(null);
     setResponse("");
+    setChatHistory([]);
 
     try {
       const result = await client.post("/api/ai/consult", {
@@ -40,13 +43,52 @@ const AIPage = () => {
     setResponse("");
 
     try {
+      // Initial consult uses the edited prompt
       const result = await client.post("/api/ai/consult", {
-        // Token is handled by server env
+        customPrompt: prompt,
       });
-      setResponse(result.data.analysis);
+      const analysis = result.data.analysis;
+      setResponse(analysis);
+
+      // Initialize chat history
+      setChatHistory([
+        { role: "user", parts: [{ text: prompt }] },
+        { role: "model", parts: [{ text: analysis }] },
+      ]);
     } catch (err) {
       console.error("Error consulting AI:", err);
       setError(err.message || "Failed to consult AI");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFollowUp = async () => {
+    if (!followUp.trim()) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const newHistory = [
+        ...chatHistory,
+        { role: "user", parts: [{ text: followUp }] },
+      ];
+
+      const result = await client.post("/api/ai/consult", {
+        messages: newHistory,
+      });
+
+      const analysis = result.data.analysis;
+      setResponse(analysis); // Update the main display
+      setChatHistory([
+        ...newHistory,
+        { role: "model", parts: [{ text: analysis }] },
+      ]);
+      setFollowUp("");
+    } catch (err) {
+      console.error("Error sending follow-up:", err);
+      setError(err.message || "Failed to send message");
     } finally {
       setLoading(false);
     }
@@ -72,13 +114,13 @@ const AIPage = () => {
           ) : (
             <>
               <TextField
-                label="Prompt Preview"
+                label="Prompt Preview (Editable)"
                 value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
                 multiline
                 rows={15}
                 fullWidth
                 InputProps={{
-                  readOnly: true,
                   style: { fontFamily: "monospace", fontSize: "0.875rem" },
                 }}
                 variant="outlined"
@@ -142,6 +184,30 @@ const AIPage = () => {
                 __html: response.replace(/```html/g, "").replace(/```/g, ""),
               }}
             />
+          </Box>
+
+          <Box sx={{ mt: 3, display: "flex", gap: 2 }}>
+            <TextField
+              label="Follow-up Question / Instruction"
+              value={followUp}
+              onChange={(e) => setFollowUp(e.target.value)}
+              fullWidth
+              variant="outlined"
+              onKeyPress={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleFollowUp();
+                }
+              }}
+            />
+            <Button
+              variant="contained"
+              onClick={handleFollowUp}
+              disabled={loading || !followUp.trim()}
+              sx={{ minWidth: 100 }}
+            >
+              {loading ? <CircularProgress size={24} /> : "Send"}
+            </Button>
           </Box>
         </Paper>
       )}
