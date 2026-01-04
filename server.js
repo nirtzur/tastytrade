@@ -1362,11 +1362,13 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %'.
       - You may recommend symbols I already have open positions for.
-      - The total sum of all recommended allocations must not exceed $${totalAllocation.toFixed(
-        2
-      )}.
-      - Provide the output as an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %.
-      - Also provide a brief reasoning for the selection.
+      - The total sum of all recommended allocations must not exceed $${(
+        totalAllocation + 15000
+      ).toFixed(2)}.
+      - Provide the ENTIRE response as valid HTML.
+      - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %.
+      - Include the brief reasoning for the selection as HTML paragraphs or lists below the table.
+      - Do not use Markdown.
     `;
 
     if (req.body.preview) {

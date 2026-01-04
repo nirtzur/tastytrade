@@ -134,6 +134,7 @@ const AIPage = () => {
               "& td": { border: "1px solid #ddd", padding: 1 },
               "& tr:nth-of-type(even)": { backgroundColor: "#fafafa" },
               "& tr:hover": { backgroundColor: "#f0f0f0" },
+              "& li": { textAlign: "left" },
             }}
           >
             <div
