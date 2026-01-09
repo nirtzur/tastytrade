@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   TextField,
@@ -17,6 +17,43 @@ const AIPage = () => {
   const [error, setError] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
   const [followUp, setFollowUp] = useState("");
+
+  // Load state from localStorage on mount
+  useEffect(() => {
+    const savedState = localStorage.getItem("aiPageState");
+    if (savedState) {
+      try {
+        const { savedPrompt, savedResponse, savedChatHistory } =
+          JSON.parse(savedState);
+        if (savedPrompt) setPrompt(savedPrompt);
+        if (savedResponse) setResponse(savedResponse);
+        if (savedChatHistory) setChatHistory(savedChatHistory);
+      } catch (e) {
+        console.error("Error parsing saved state:", e);
+      }
+    }
+  }, []);
+
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem(
+      "aiPageState",
+      JSON.stringify({
+        savedPrompt: prompt,
+        savedResponse: response,
+        savedChatHistory: chatHistory,
+      })
+    );
+  }, [prompt, response, chatHistory]);
+
+  const handleClearConversation = () => {
+    setPrompt("");
+    setResponse("");
+    setChatHistory([]);
+    setError(null);
+    setFollowUp("");
+    localStorage.removeItem("aiPageState");
+  };
 
   const handlePreview = async () => {
     setLoading(true);
@@ -140,6 +177,14 @@ const AIPage = () => {
                   sx={{ minWidth: 120 }}
                 >
                   {loading ? <CircularProgress size={24} /> : "Consult Gemini"}
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={handleClearConversation}
+                  disabled={loading}
+                >
+                  Clear Conversation
                 </Button>
               </Box>
             </>
