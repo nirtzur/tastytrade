@@ -48,8 +48,10 @@ async function getDaysToEarnings(symbol) {
       const today = new Date();
       const threeMonthsLater = new Date();
       threeMonthsLater.setMonth(today.getMonth() + 3);
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(today.getMonth() - 6);
 
-      const from = today.toISOString().split("T")[0];
+      const from = sixMonthsAgo.toISOString().split("T")[0];
       const to = threeMonthsLater.toISOString().split("T")[0];
 
       const earnings = await new Promise((resolve, reject) => {
@@ -73,26 +75,33 @@ async function getDaysToEarnings(symbol) {
         return null;
       }
 
-      // Sort by date just in case
+      // Sort by date
       const sortedEarnings = earnings.earningsCalendar.sort(
         (a, b) => new Date(a.date) - new Date(b.date)
       );
 
-      // Find the first future earnings date
+      // 1. Look for future earnings
       const nextEarnings = sortedEarnings.find(
         (e) => new Date(e.date) >= today
       );
 
-      if (!nextEarnings) {
-        return null;
+      if (nextEarnings) {
+        const nextDate = new Date(nextEarnings.date);
+        return Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24));
       }
 
-      const earningsDate = new Date(nextEarnings.date);
-      const daysToEarnings = Math.ceil(
-        (earningsDate - today) / (1000 * 60 * 60 * 24)
-      );
+      // 2. If no future earnings, find the most recent past earnings
+      const lastEarnings = [...sortedEarnings]
+        .reverse()
+        .find((e) => new Date(e.date) < today);
 
-      return daysToEarnings;
+      if (lastEarnings) {
+        const lastDate = new Date(lastEarnings.date);
+        // Returns negative number indicating days since last earnings
+        return Math.ceil((lastDate - today) / (1000 * 60 * 60 * 24));
+      }
+
+      return null;
     } catch (error) {
       // Check if it's a rate limit error
       const isRateLimit = error.status === 429;

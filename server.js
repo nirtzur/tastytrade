@@ -188,14 +188,10 @@ async function getProgressState(sessionId) {
 
     if (!progress) return null;
 
-    // Check if progress is recent (within last hour) and not completed
+    // Check if progress is recent (within last hour)
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    if (
-      progress.updated_at < oneHourAgo ||
-      progress.type === "complete" ||
-      progress.type === "error"
-    ) {
-      // Clean up old/completed progress
+    if (progress.updated_at < oneHourAgo) {
+      // Clean up old progress
       await progress.destroy();
       return null;
     }
@@ -710,9 +706,9 @@ app.get("/api/trading-data/refresh", authenticate, async (req, res) => {
       sessionId: sessionId,
     };
 
-    // Save completion state and clean up
+    // Save completion state
     await saveProgressState(sessionId, completeProgress);
-    await clearProgressState(sessionId);
+    // await clearProgressState(sessionId); // Keep state for a while so client can see it
 
     res.write(`data: ${JSON.stringify(completeProgress)}\n\n`);
 
