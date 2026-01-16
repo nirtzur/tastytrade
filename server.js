@@ -533,18 +533,17 @@ app.get("/api/progress-state", authenticate, async (req, res) => {
   try {
     // Look for any active progress state (we'll use a simple approach since we typically only have one analysis running)
     const activeProgress = await ProgressState.findOne({
-      where: {
-        type: {
-          [sequelize.Sequelize.Op.in]: ["start", "progress"],
-        },
-      },
       order: [["updated_at", "DESC"]],
     });
 
     if (activeProgress) {
       // Check if progress is recent (within last hour)
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      if (activeProgress.updated_at >= oneHourAgo) {
+
+      if (activeProgress.updated_at < oneHourAgo) {
+        // Clean up old progress
+        await activeProgress.destroy();
+      } else if (["start", "progress"].includes(activeProgress.type)) {
         res.json({
           hasProgress: true,
           sessionId: activeProgress.session_id,
@@ -557,9 +556,6 @@ app.get("/api/progress-state", authenticate, async (req, res) => {
           updated_at: activeProgress.updated_at,
         });
         return;
-      } else {
-        // Clean up old progress
-        await activeProgress.destroy();
       }
     }
 
