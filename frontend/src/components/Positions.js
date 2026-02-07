@@ -432,8 +432,10 @@ function Positions() {
               {positions
                 .filter((position) => {
                   // Filter by status (Open/Closed)
-                  if (openClosedFilter === "open" && !position.isOpen) return false;
-                  if (openClosedFilter === "closed" && position.isOpen) return false;
+                  if (openClosedFilter === "open" && !position.isOpen)
+                    return false;
+                  if (openClosedFilter === "closed" && position.isOpen)
+                    return false;
 
                   // Filter by Symbol
                   if (symbolFilter) {
