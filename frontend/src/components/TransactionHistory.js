@@ -26,6 +26,7 @@ const TransactionHistory = () => {
   const [showMoneyMovement, setShowMoneyMovement] = useState(false);
   const [startDate, setStartDate] = useState(savedStartDate);
   const [endDate, setEndDate] = useState(defaultEndDate);
+  const [symbolFilter, setSymbolFilter] = useState("");
 
   // Save startDate to localStorage when it changes
   useEffect(() => {
@@ -109,9 +110,23 @@ const TransactionHistory = () => {
     "Action",
   ];
 
-  const displayedHistory = showMoneyMovement
-    ? history
-    : history.filter((h) => h.Type !== "Money Movement");
+  const displayedHistory = history.filter((h) => {
+    // Filter by Money Movement
+    if (!showMoneyMovement && h.Type === "Money Movement") {
+      return false;
+    }
+
+    // Filter by Symbol
+    if (symbolFilter) {
+      const filter = symbolFilter.toUpperCase().trim();
+      const symbol = (h.Symbol || "").toUpperCase();
+      if (!symbol.includes(filter)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 
   const historyTotal = displayedHistory.reduce(
     (sum, item) => sum + (Number(item.Value) || 0),
@@ -153,6 +168,12 @@ const TransactionHistory = () => {
           onChange={(e) => setEndDate(e.target.value)}
           InputLabelProps={{ shrink: true }}
           disabled={loading || syncing}
+          sx={{ minWidth: 150 }}
+        />
+        <TextField
+          label="Filter Symbol"
+          value={symbolFilter}
+          onChange={(e) => setSymbolFilter(e.target.value)}
           sx={{ minWidth: 150 }}
         />
         <Box sx={{ display: "flex", alignItems: "center" }}>

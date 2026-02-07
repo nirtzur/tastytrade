@@ -15,6 +15,7 @@ import {
   Button,
   ToggleButton,
   ToggleButtonGroup,
+  TextField,
   Tooltip,
 } from "@mui/material";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
@@ -26,6 +27,7 @@ function Positions() {
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [openClosedFilter, setOpenClosedFilter] = useState("open"); // "open" or "closed"
+  const [symbolFilter, setSymbolFilter] = useState("");
 
   const fetchPositions = async (isRefresh = false) => {
     try {
@@ -289,7 +291,7 @@ function Positions() {
         </Button>
       </Box>
       {/* Filter Toggle */}
-      <Box mb={2}>
+      <Box mb={2} sx={{ display: "flex", gap: 2, alignItems: "center" }}>
         <ToggleButtonGroup
           value={openClosedFilter}
           exclusive
@@ -302,6 +304,15 @@ function Positions() {
           <ToggleButton value="closed">Closed Positions</ToggleButton>
           <ToggleButton value="all">All</ToggleButton>
         </ToggleButtonGroup>
+
+        <TextField
+          label="Filter Symbol"
+          variant="outlined"
+          size="small"
+          value={symbolFilter}
+          onChange={(e) => setSymbolFilter(e.target.value)}
+          sx={{ minWidth: 150 }}
+        />
       </Box>
 
       {positions.length === 0 ? (
@@ -420,8 +431,17 @@ function Positions() {
             <TableBody>
               {positions
                 .filter((position) => {
-                  if (openClosedFilter === "open") return position.isOpen;
-                  if (openClosedFilter === "closed") return !position.isOpen;
+                  // Filter by status (Open/Closed)
+                  if (openClosedFilter === "open" && !position.isOpen) return false;
+                  if (openClosedFilter === "closed" && position.isOpen) return false;
+
+                  // Filter by Symbol
+                  if (symbolFilter) {
+                    const filter = symbolFilter.toUpperCase().trim();
+                    const symbol = (position.symbol || "").toUpperCase();
+                    if (!symbol.includes(filter)) return false;
+                  }
+
                   return true; // all
                 })
                 .map((position, index) => {
