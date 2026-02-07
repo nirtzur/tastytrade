@@ -881,17 +881,10 @@ async function fetchAggregatedPositions() {
     let displaySymbol;
 
     if (tx.instrument_type === "Equity Option") {
-      // Check if it's a put option
-      const match = tx.symbol.match(/([CP])(\d{8})$/);
-      if (match && match[1] === "P") {
-        // For puts, use the full option symbol as the grouping key
-        groupingKey = tx.symbol.trim();
-        displaySymbol = tx.symbol.trim();
-      } else {
-        // For calls, use the underlying stock symbol
-        displaySymbol = tx.symbol.split(" ")[0];
-        groupingKey = displaySymbol;
-      }
+      // For options, use the underlying stock symbol as grouping key
+      // This ensures that assigned puts (holding stock) are grouped with the equity transactions
+      displaySymbol = tx.symbol.split(" ")[0];
+      groupingKey = displaySymbol;
     } else {
       // For equity transactions, use the stock symbol
       displaySymbol = tx.symbol.split(" ")[0];
