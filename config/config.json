@@ -1,0 +1,1 @@
+{"development": {"username": "nir", "password": "tzur", "database": "tastytrade", "host": "localhost", "dialect": "mysql"}, "production": {"use_env_variable": "DATABASE_URL", "dialect": "mysql"}}

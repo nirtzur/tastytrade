@@ -52,6 +52,10 @@ TransactionHistory.init(
       defaultValue: sequelize.literal("CURRENT_TIMESTAMP"),
       allowNull: false,
     },
+    closed_position_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
   },
   {
     sequelize,
