@@ -1134,7 +1134,7 @@ async function fetchAggregatedPositions() {
 
     // Process in batches
     const priceMap = {};
-    const batchSize = 2;
+    const batchSize = 5;
     for (let i = 0; i < uniqueSymbols.length; i += batchSize) {
       const batch = uniqueSymbols.slice(i, i + batchSize);
       await Promise.all(
@@ -1148,7 +1148,7 @@ async function fetchAggregatedPositions() {
         })
       );
       if (i + batchSize < uniqueSymbols.length) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 334));
       }
     }
     openPositions.forEach((position) => {
