@@ -866,8 +866,7 @@ async function fetchAggregatedPositions() {
   // 1. Fetch persistent closed positions
   let dbClosedPositions = [];
   try {
-    // Ensure table exists and matches model
-    await ClosedPosition.sync({ alter: true });
+    // Reading from DB
     dbClosedPositions = await ClosedPosition.findAll({
       order: [["closed_at", "DESC"]],
       raw: true,
