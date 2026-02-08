@@ -77,9 +77,15 @@ const AnalysisTable = () => {
             </Link>
           ),
           "Current Price": `$${current_price || "N/A"}`,
-          "Stock Spread": `$${stock_spread || "N/A"}`,
+          "Stock Spread":
+            stock_spread !== null && stock_spread !== undefined
+              ? `$${Number(stock_spread).toFixed(2)}`
+              : "N/A",
           "Strike Price": `$${option_strike_price || "N/A"}`,
-          "Option Mid": `$${option_mid_price || "N/A"}`,
+          "Option Mid":
+            option_mid_price !== null && option_mid_price !== undefined
+              ? `$${Number(option_mid_price).toFixed(2)}`
+              : "N/A",
           "Mid %":
             option_mid_percent !== null && option_mid_percent !== undefined
               ? `${Number(option_mid_percent).toFixed(4)}%`
