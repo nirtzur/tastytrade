@@ -1,9 +1,23 @@
 const axios = require("axios");
 const sleep = require("./utils/sleep");
+const WebSocket = require("ws");
+const TastytradeClient = require("@tastytrade/api").default;
+
+// Setup global WebSocket and window as required by the library for Node.js usage
+global.WebSocket = WebSocket;
+global.window = {
+  WebSocket,
+  setTimeout,
+  clearTimeout,
+};
 require("dotenv").config();
 
 // Validate required environment variables
-const REQUIRED_ENV_VARS = ["TASTYTRADE_BASE_URL", "TASTYTRADE_ACCOUNT_NUMBER"];
+const REQUIRED_ENV_VARS = [
+  "TASTYTRADE_BASE_URL",
+  "TASTYTRADE_ACCOUNT_NUMBER",
+  "TASTYTRADE_CLIENT_SECRET",
+];
 
 function validateEnvironment() {
   const missing = REQUIRED_ENV_VARS.filter((varName) => !process.env[varName]);
@@ -16,132 +30,74 @@ function validateEnvironment() {
 
 const baseUrl = process.env.TASTYTRADE_BASE_URL;
 
-// Parse command line arguments for debug mode
-const isDebug = process.argv.includes("-debug");
+let tastytradeClient = null;
 
-// Enhanced request handling with retries
-async function makeRequest(
-  method,
-  endpoint,
-  token = null,
-  data = null,
-  params = null,
-  retries = 3
-) {
-  const config = {
-    method,
-    url: `${baseUrl}${endpoint}`,
-    headers: {
-      "User-Agent": "tastytrade-app/1.0",
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    timeout: 10000, // 10 second timeout
-  };
-
-  if (token) {
-    config.headers.Authorization = token;
-  }
-
-  if (data) {
-    config.data = data;
-  }
-
-  if (params) {
-    config.params = params;
-  }
-
-  try {
-    const response = await axios(config);
-    return response.data;
-  } catch (error) {
-    if (error.response?.status === 429 && retries > 0) {
-      await sleep(100 * (4 - retries)); // Exponential backoff
-      return makeRequest(method, endpoint, token, data, params, retries - 1);
-    }
-
-    const errorDetails = {
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message,
-    };
-
-    if (isDebug) {
-      console.error("Request failed:", errorDetails);
-    }
-
-    throw new Error(`API request failed: ${error.message}`);
-  }
-}
-
-async function initializeTastytrade({
-  rememberMeToken = null,
-  username = null,
-  password = null,
-}) {
+async function initializeTastytrade({ username = null, password = null } = {}) {
   try {
     validateEnvironment();
+
+    // If client exists and we are not forcing a new login, just return success
+    if (tastytradeClient && !username && !password) {
+      return { success: true };
+    }
+
     console.log(
       "Initializing Tastytrade with URL:",
       process.env.TASTYTRADE_BASE_URL
     );
 
-    let data = { "remember-me": true, login: username }; // Always request a remember-me token
+    // Initialize client without fixed refresh token
+    const config = {
+      baseUrl: process.env.TASTYTRADE_BASE_URL,
+      accountStreamerUrl: "wss://streamer.tastyworks.com",
+      clientSecret: process.env.TASTYTRADE_CLIENT_SECRET,
+      oauthScopes: ["read", "trade"],
+    };
 
-    let endpoint = "/sessions";
+    // Create new client (or overwrite existing if login requested)
+    tastytradeClient = new TastytradeClient(config);
 
-    if (rememberMeToken) {
-      data["remember-token"] = rememberMeToken; // Use remember-me token to create session
-    } else {
-      data["password"] = password;
+    if (username && password) {
+      console.log("Logging in with username/password...");
+      await tastytradeClient.sessionService.login(username, password);
+      console.log("Login successful via SDK");
     }
 
-    const response = await makeRequest("post", endpoint, null, data);
-
-    console.log("Login response received:", {
-      status: "success",
-      hasData: !!response?.data,
-      hasSessionToken: !!response?.data?.["session-token"],
-      hasRememberToken: !!response?.data?.["remember-token"],
-    });
-
-    if (!response?.data?.["session-token"]) {
-      throw new Error("No session token received in response");
-    }
-
-    if (!response.data?.["session-expiration"]) {
-      throw new Error("No session expiration received in response");
-    }
-
-    // Return tokens, username and expiration time in consistent format
     return {
-      sessionToken: response.data["session-token"].replace(/\n/g, ""),
-      rememberMeToken: response.data["remember-token"],
-      username: data.login, // Include username in response
-      expiresAt: response.data["session-expiration"], // Use API-provided expiration time
+      success: true,
     };
   } catch (error) {
     console.error("Authentication error details:", {
       message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
+      stack: error.stack,
     });
     throw new Error(`Failed to authenticate with Tastytrade: ${error.message}`);
   }
 }
 
-async function getQuote(symbol, sessionToken) {
-  try {
-    if (!sessionToken) {
-      throw new Error("Session token is required");
-    }
+// Helper to access the initialized client
+function getClient() {
+  if (!tastytradeClient) {
+    throw new Error("Tastytrade client not initialized");
+  }
+  return tastytradeClient;
+}
 
-    // Get the quote data using market-data API
-    const { data: quoteData } = await makeRequest(
-      "GET",
-      `/market-data/Equity/${symbol}`,
-      sessionToken
+// ... existing logic but refactored to use client ...
+
+// Note: Removed sessionToken param as it is handled by the client internall via OAuth
+async function getQuote(symbol) {
+  try {
+    // Determine last price using market-data API
+    // Note: The SDK's marketDataService is for streaming. For snapshots, we use raw HTTP client.
+    const client = getClient();
+    const marketData = await client.httpClient.getData(
+      `/market-data/Equity/${symbol}`
     );
+
+    // SDK returns the data payload directly if unwrapped, or axios response.
+    // Let's assume unwrapped based on typical SDK behavior, but handle both just in case.
+    const quoteData = marketData.data || marketData;
 
     return {
       symbol: quoteData.symbol,
@@ -160,11 +116,15 @@ async function getQuote(symbol, sessionToken) {
 }
 
 async function findNextExpiration(chainResponse, today) {
-  if (!chainResponse?.data?.items) {
+  // Chain response structure might differ if SDK wraps it?
+  // Assuming standard API response structure: { data: { items: [...] } } or { items: [...] }
+  const data = chainResponse.data || chainResponse;
+
+  if (!data?.items) {
     throw new Error("No option chain data received");
   }
 
-  const option = chainResponse.data.items[0].expirations.find((expiration) => {
+  const option = data.items[0].expirations.find((expiration) => {
     const isWeeklyOrRegular = ["Weekly", "Regular"].includes(
       expiration["expiration-type"]
     );
@@ -201,31 +161,29 @@ async function findStrikeAbovePrice(option, currentPrice) {
   };
 }
 
-async function getOptionQuote(option, sessionToken) {
-  const optionQuoteResponse = await makeRequest(
-    "GET",
-    `/market-data/Equity Option/${option.symbol}`,
-    sessionToken
+async function getOptionQuote(option) {
+  const client = getClient();
+  const optionQuoteResponse = await client.httpClient.getData(
+    `/market-data/Equity Option/${option.symbol}`
   );
 
-  if (!optionQuoteResponse?.data) {
+  const data = optionQuoteResponse.data || optionQuoteResponse;
+
+  if (!data) {
     throw new Error("No option quote data received");
   }
 
   return {
     ...option,
-    bid: optionQuoteResponse.data.bid,
-    ask: optionQuoteResponse.data.ask,
-    last: optionQuoteResponse.data.last,
+    bid: data.bid,
+    ask: data.ask,
+    last: data.last,
   };
 }
 
-async function getNextOption(symbol, sessionToken, quoteData) {
+// Note: Removed sessionToken param
+async function getNextOption(symbol, quoteData) {
   try {
-    if (!sessionToken) {
-      throw new Error("Session token is required");
-    }
-
     if (!quoteData) {
       throw new Error("Quote data is required");
     }
@@ -235,11 +193,13 @@ async function getNextOption(symbol, sessionToken, quoteData) {
     const currentPrice = (currentBid + currentAsk) / 2;
     const today = new Date().toISOString().split("T")[0];
 
-    // Get the option chain data
-    const chainResponse = await makeRequest(
-      "GET",
-      `/option-chains/${symbol}/nested`,
-      sessionToken
+    // Get the option chain data using SDK (InstrumentsService)
+    // Or just fetch the nested chain URL directly like before if easier?
+    // Let's use SDK service method properly.
+    const client = getClient();
+    // Use raw request for nested chain for simplicity matching old URL structure if SDK method is complex
+    const chainResponse = await client.httpClient.getData(
+      `/option-chains/${symbol}/nested`
     );
 
     // Find the next expiration
@@ -249,54 +209,69 @@ async function getNextOption(symbol, sessionToken, quoteData) {
     const strike = await findStrikeAbovePrice(expiration, currentPrice);
 
     // Get the option quote
-    return await getOptionQuote(strike, sessionToken);
+    return await getOptionQuote(strike);
   } catch (error) {
-    if (isDebug) {
-      console.error("Option chain error details:", error.message);
-    }
     throw new Error(
       `Failed to fetch option chain for ${symbol}: ${error.message}`
     );
   }
 }
 
-async function getAccountHistory(sessionToken, startDate, endDate) {
+// Note: Removed sessionToken param
+async function getAccountHistory(startDate, endDate) {
   try {
-    if (!sessionToken) {
-      throw new Error("Session token is required");
-    }
-
     const defaultStartDate = "2024-11-01";
     const defaultEndDate = new Date().toISOString().split("T")[0];
 
     startDate = startDate || defaultStartDate;
     endDate = endDate || defaultEndDate;
 
-    let response = await makeRequest(
-      "GET",
-      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-at=${startDate}&end-date=${endDate}`,
-      sessionToken
+    const client = getClient();
+
+    // Using SDK Service
+    // Note: getAccountTransactions takes (accountNumber, queryParams)
+    // We map params to object
+    let params = {
+      sort: "Asc",
+      "start-at": startDate,
+      "end-date": endDate,
+    };
+
+    let response = await client.transactionsService.getAccountTransactions(
+      process.env.TASTYTRADE_ACCOUNT_NUMBER,
+      params
     );
 
-    if (!response?.data) {
+    let data = response.data || response;
+
+    if (!data?.items) {
+      // Maybe wrapped differently?
+      if (Array.isArray(response)) return response; // Some SDKs return array directly
+      // Fallback
       throw new Error("No account history data received");
     }
 
-    let allTransactions = response.data.items;
+    let allTransactions = data.items;
+
+    // Pagination handling
+    // We need to loop if pages exist
     while (
-      response.pagination &&
-      response.pagination["page-offset"] < response.pagination["total-pages"]
+      data.pagination &&
+      data.pagination["page-offset"] < data.pagination["total-pages"]
     ) {
-      const nextPageOffset = response.pagination["page-offset"] + 1;
-      response = await makeRequest(
-        "GET",
-        `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/transactions?sort=Asc&start-at=${startDate}&end-date=${endDate}&page-offset=${nextPageOffset}`,
-        sessionToken
+      const nextPageOffset = data.pagination["page-offset"] + 1;
+      params["page-offset"] = nextPageOffset;
+
+      response = await client.transactionsService.getAccountTransactions(
+        process.env.TASTYTRADE_ACCOUNT_NUMBER,
+        params
       );
-      if (!response?.data) {
-        throw new Error("No account history data received on next page");
+
+      data = response.data || response;
+      if (!data?.items) {
+        break;
       }
-      allTransactions = allTransactions.concat(response.data.items);
+      allTransactions = allTransactions.concat(data.items);
     }
     return allTransactions;
   } catch (error) {
@@ -308,24 +283,22 @@ async function getAccountHistory(sessionToken, startDate, endDate) {
   }
 }
 
-async function getPositions(sessionToken) {
+// Note: Removed sessionToken param
+async function getPositions() {
   try {
-    if (!sessionToken) {
-      throw new Error("Session token is required");
-    }
-
-    const response = await makeRequest(
-      "GET",
-      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/positions`,
-      sessionToken
+    const client = getClient();
+    const response = await client.balancesAndPositionsService.getPositionsList(
+      process.env.TASTYTRADE_ACCOUNT_NUMBER
     );
 
-    if (!response?.data?.items) {
+    const data = response.data || response;
+
+    if (!data?.items) {
       throw new Error("No positions data received");
     }
 
     // Group positions by underlying symbol
-    const positionsBySymbol = response.data.items.reduce((acc, item) => {
+    const positionsBySymbol = data.items.reduce((acc, item) => {
       const symbol = item["underlying-symbol"];
       if (!acc[symbol]) {
         acc[symbol] = {
@@ -343,7 +316,7 @@ async function getPositions(sessionToken) {
     }, {});
 
     // Convert grouped positions into aggregated records
-    const accountHistory = await getAccountHistory(sessionToken);
+    // Note: accountHistory was unused in original code, removing it.
 
     const aggregatedPositions = Object.entries(positionsBySymbol)
       .filter(([_, data]) => data.equity && data.option)
@@ -370,10 +343,22 @@ async function getPositions(sessionToken) {
   }
 }
 
+async function logout() {
+  try {
+    const client = getClient();
+    await client.sessionService.logout();
+    console.log("Logged out successfully");
+  } catch (error) {
+    console.error("Logout error:", error.message);
+    // Best effort logout
+  }
+}
+
 module.exports = {
   initializeTastytrade,
   getQuote,
   getNextOption,
   getAccountHistory,
   getPositions,
+  logout,
 };

@@ -139,10 +139,10 @@ const symbols = args
   .filter((arg) => arg !== "-debug")
   .map((symbol) => symbol.toUpperCase());
 
-async function fetchSymbolData(symbol, token) {
+async function fetchSymbolData(symbol) {
   try {
     // First get the quote data
-    const quote = await getQuote(symbol, token);
+    const quote = await getQuote(symbol);
 
     // Calculate stock spread
     const stockBid = parseFloat(quote?.bid) || null;
@@ -164,7 +164,7 @@ async function fetchSymbolData(symbol, token) {
     }
 
     // Then use the quote data to get the option chain
-    const options = await getNextOption(symbol, token, quote);
+    const options = await getNextOption(symbol, quote);
 
     return {
       symbol,
@@ -205,14 +205,14 @@ async function storeAnalysisResult(result) {
   }
 }
 
-async function processSymbols(symbols, token) {
+async function processSymbols(symbols) {
   const results = [];
   const today = new Date();
   const expirationDate = new Date();
   expirationDate.setDate(today.getDate() + DAYS_TO_EXPIRATION);
 
   for (const symbol of symbols) {
-    const data = await fetchSymbolData(symbol, token);
+    const data = await fetchSymbolData(symbol);
     if (data) {
       const currentPrice = parseFloat(data.quote?.last) || null;
       const stockBid = parseFloat(data.quote?.bid) || null;
@@ -369,11 +369,11 @@ async function main() {
     }
 
     // Initialize Tastytrade client
-    const token = await initializeTastytrade();
+    await initializeTastytrade();
     console.log(chalk.green("Tastytrade client initialized successfully"));
 
     // Process symbols
-    const results = await processSymbols(symbolsToProcess, token);
+    const results = await processSymbols(symbolsToProcess);
 
     // Log completion
     console.log(chalk.green("\nProcessing complete!"));
@@ -385,7 +385,7 @@ async function main() {
 }
 
 // Process symbols with progress callback
-async function processSymbolsWithProgress(symbols, token, progressCallback) {
+async function processSymbolsWithProgress(symbols, progressCallback) {
   const results = [];
   const today = new Date();
   const expirationDate = new Date();
@@ -395,7 +395,7 @@ async function processSymbolsWithProgress(symbols, token, progressCallback) {
   const processSymbol = async (symbol) => {
     let analysisResult;
     try {
-      const data = await fetchSymbolData(symbol, token);
+      const data = await fetchSymbolData(symbol);
       if (data) {
         const currentPrice = parseFloat(data.quote?.last) || null;
         const stockBid = parseFloat(data.quote?.bid) || null;

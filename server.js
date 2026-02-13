@@ -13,6 +13,7 @@ const {
   initializeTastytrade,
   getAccountHistory,
   getPositions,
+  logout,
 } = require("./Analyze/tastytrade");
 const {
   processSymbols,
@@ -86,7 +87,6 @@ async function syncTransactions() {
 
     const formatDate = (date) => date.toISOString().split(".")[0];
     const transactions = await getAccountHistory(
-      sessionToken,
       formatDate(lastSync),
       formatDate(now)
     );
@@ -354,70 +354,31 @@ const requireDescopeAuth = async (req, res, next) => {
 // Apply Descope auth to all API routes
 app.use("/api", requireDescopeAuth);
 
-// Session management
-let sessionToken = null;
-let rememberMeToken = null;
-let username = null; // Store username alongside tokens
-let sessionExpiresAt = null; // Track session expiration time
+// Session management (Legacy - Removed)
+// let sessionToken = null;  // No longer needed
+// let rememberMeToken = null; // No longer needed
+// let username = null; // No longer needed
+// let sessionExpiresAt = null; // No longer needed
 
 // Authentication middleware
+// Simplified to just ensure the client is initialized
 async function authenticate(req, res, next) {
   try {
-    logInfo(`Authentication requested for route: ${req.method} ${req.path}`);
+    logInfo(`Authentication check for route: ${req.method} ${req.path}`);
 
-    // Check if we have a valid session
-    if (sessionToken && sessionExpiresAt) {
-      const now = new Date();
-      const expiryDate = new Date(sessionExpiresAt);
+    // Lazy initialization of the Tastytrade client if not already done
+    // Since initializeTastytrade is idempotent-ish and safe to call
+    await initializeTastytrade();
 
-      if (now < expiryDate) {
-        logInfo("Using existing valid session token");
-        next();
-        return;
-      }
-      logInfo("Session token expired, will refresh using remember-me token");
-    }
+    // We could check if we got a success from it, but if it throws, it goes to catch.
 
-    // No valid session, try to refresh using remember-me token
-    if (!rememberMeToken) {
-      throw new Error("No remember-me token available");
-    }
-
-    logInfo("Attempting to initialize session with remember-me token...");
-    try {
-      ({
-        sessionToken,
-        rememberMeToken,
-        username,
-        expiresAt: sessionExpiresAt,
-      } = await initializeTastytrade({
-        rememberMeToken,
-        username,
-      }));
-      logInfo("Successfully refreshed session using remember-me token");
-    } catch (error) {
-      // Clear all auth info if refresh fails
-      sessionToken = null;
-      rememberMeToken = null;
-      username = null;
-      sessionExpiresAt = null;
-      throw error;
-    }
     next();
   } catch (error) {
     logError("Authentication failed:", error);
-    // Return specific error code for missing TastyTrade credentials
-    if (
-      error.message === "No remember-me token available" ||
-      error.message.includes("Authentication failed")
-    ) {
-      res.status(401).json({
-        error: "TastyTrade authentication required",
-        code: "TASTYTRADE_AUTH_REQUIRED",
-      });
-    } else {
-      res.status(401).json({ error: "Authentication required" });
-    }
+    res.status(401).json({
+      error: "Tastytrade authentication required",
+      message: error.message,
+    });
   }
 }
 
@@ -573,7 +534,7 @@ app.get("/api/progress-state", authenticate, async (req, res) => {
 app.get("/api/positions", authenticate, async (req, res) => {
   try {
     logInfo("Fetching positions");
-    const positions = await getPositions(sessionToken);
+    const positions = await getPositions();
 
     // Extract unique underlying symbols to minimize API calls
     const uniqueSymbols = [
@@ -682,19 +643,15 @@ app.get("/api/trading-data/refresh", authenticate, async (req, res) => {
     res.write(`data: ${JSON.stringify(startProgress)}\n\n`);
 
     // Process symbols with progress updates
-    await processSymbolsWithProgress(
-      symbolsToProcess,
-      sessionToken,
-      async (progress) => {
-        // Add session ID to progress
-        const progressWithSession = { ...progress, sessionId };
+    await processSymbolsWithProgress(symbolsToProcess, async (progress) => {
+      // Add session ID to progress
+      const progressWithSession = { ...progress, sessionId };
 
-        // Save progress state to database
-        await saveProgressState(sessionId, progressWithSession);
+      // Save progress state to database
+      await saveProgressState(sessionId, progressWithSession);
 
-        res.write(`data: ${JSON.stringify(progressWithSession)}\n\n`);
-      }
-    );
+      res.write(`data: ${JSON.stringify(progressWithSession)}\n\n`);
+    });
 
     // Send completion message
     const completeProgress = {
@@ -745,7 +702,7 @@ app.post("/api/trading-data/refresh", authenticate, async (req, res) => {
     const symbolsToProcess = [...sp500Symbols, ...etfSymbols];
 
     logInfo(`Processing ${symbolsToProcess.length} symbols...`);
-    await processSymbols(symbolsToProcess, sessionToken);
+    await processSymbols(symbolsToProcess);
 
     res.json({ success: true, message: "Analysis refresh complete" });
   } catch (error) {
@@ -771,27 +728,18 @@ app.post("/api/account-history/sync", authenticate, async (req, res) => {
   }
 });
 
-// Authentication endpoints
+// Authentication endpoints (Modified for OAuth compatibility)
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { userLogin, password } = req.body;
 
-    if (!userLogin || !password) {
-      return res.status(400).json({
-        error: "Username and password are required",
-      });
+    if (userLogin && password) {
+      // Perform login to establish session/refresh tokens
+      await initializeTastytrade({ username: userLogin, password });
+    } else {
+      // Just ensure client is initialized (if already logged in)
+      await initializeTastytrade();
     }
-
-    // Initialize session with credentials
-    ({
-      sessionToken,
-      rememberMeToken,
-      username,
-      expiresAt: sessionExpiresAt,
-    } = await initializeTastytrade({
-      username: userLogin,
-      password,
-    }));
 
     res.json({ success: true });
   } catch (error) {
@@ -805,16 +753,8 @@ app.post("/api/auth/login", async (req, res) => {
 
 app.post("/api/auth/logout", authenticate, async (req, res) => {
   try {
-    if (sessionToken) {
-      // Call TastyTrade API to invalidate the session
-      await makeRequest("DELETE", "/sessions", sessionToken);
-    }
-
-    // Clear tokens and user info
-    sessionToken = null;
-    rememberMeToken = null;
-    username = null;
-    sessionExpiresAt = null;
+    // Call TastyTrade API to invalidate the session
+    await logout();
 
     res.json({ success: true });
   } catch (error) {

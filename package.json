@@ -20,6 +20,7 @@
   "dependencies": {
     "@descope/node-sdk": "^1.7.21",
     "@google/genai": "^1.34.0",
+    "@tastytrade/api": "^6.0.1",
     "axios": "^1.8.4",
     "chalk": "^4.1.2",
     "cors": "^2.8.5",
@@ -30,6 +31,6 @@
     "node-fetch": "^2.7.0",
     "sequelize": "^6.37.7",
     "sequelize-cli": "^6.6.3",
-    "ws": "^8.18.1"
+    "ws": "^8.19.0"
   }
 }
