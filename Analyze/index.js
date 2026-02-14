@@ -10,6 +10,7 @@ finnhubClient.apiKey = process.env.FINNHUB_API_KEY;
 const {
   initializeTastytrade,
   getQuote,
+  getQuotes,
   getNextOption,
   getAccountHistory,
 } = require("./tastytrade");
@@ -139,10 +140,10 @@ const symbols = args
   .filter((arg) => arg !== "-debug")
   .map((symbol) => symbol.toUpperCase());
 
-async function fetchSymbolData(symbol) {
+async function fetchSymbolData(symbol, preFetchedQuote = null) {
   try {
     // First get the quote data
-    const quote = await getQuote(symbol);
+    const quote = preFetchedQuote || (await getQuote(symbol));
 
     // Calculate stock spread
     const stockBid = parseFloat(quote?.bid) || null;
@@ -392,10 +393,10 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
   expirationDate.setDate(today.getDate() + DAYS_TO_EXPIRATION);
   let processedCount = 0;
 
-  const processSymbol = async (symbol) => {
+  const processSymbol = async (symbol, preFetchedQuote = null) => {
     let analysisResult;
     try {
-      const data = await fetchSymbolData(symbol);
+      const data = await fetchSymbolData(symbol, preFetchedQuote);
       if (data) {
         const currentPrice = parseFloat(data.quote?.last) || null;
         const stockBid = parseFloat(data.quote?.bid) || null;
@@ -487,11 +488,31 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
     return analysisResult;
   };
 
-  // Process symbols sequentially (no concurrency)
-  for (const symbol of symbols) {
-    const result = await processSymbol(symbol);
-    if (result) {
-      results.push(result);
+  // Process symbols in chunks of 50
+  for (let i = 0; i < symbols.length; i += 50) {
+    const chunk = symbols.slice(i, i + 50);
+    let chunkQuotes = [];
+    try {
+      chunkQuotes = await getQuotes(chunk);
+    } catch (e) {
+      console.error(
+        `Error fetching quotes for chunk starting with ${chunk[0]}:`,
+        e.message
+      );
+    }
+
+    // Create a map for quick lookup
+    const quotesMap = new Map();
+    if (Array.isArray(chunkQuotes)) {
+      chunkQuotes.forEach((q) => quotesMap.set(q.symbol, q));
+    }
+
+    for (const symbol of chunk) {
+      const quote = quotesMap.get(symbol);
+      const result = await processSymbol(symbol, quote);
+      if (result) {
+        results.push(result);
+      }
     }
   }
 

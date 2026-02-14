@@ -1,7 +1,11 @@
 const axios = require("axios");
 const sleep = require("./utils/sleep");
 const WebSocket = require("ws");
+const fs = require("fs");
+const path = require("path");
 const TastytradeClient = require("@tastytrade/api").default;
+
+const SESSION_FILE = path.join(__dirname, "../tastytrade-session.json");
 
 // Setup global WebSocket and window as required by the library for Node.js usage
 global.WebSocket = WebSocket;
@@ -31,22 +35,26 @@ function validateEnvironment() {
 const baseUrl = process.env.TASTYTRADE_BASE_URL;
 
 let tastytradeClient = null;
+let isSessionActive = false;
+
+function handleApiError(error) {
+  if (
+    error.response?.status === 401 ||
+    (error.message && error.message.includes("401"))
+  ) {
+    console.log("Session expired or invalid, marking session as inactive.");
+    isSessionActive = false;
+    tastytradeClient = null;
+    try {
+      if (fs.existsSync(SESSION_FILE)) fs.unlinkSync(SESSION_FILE);
+    } catch (e) {}
+  }
+}
 
 async function initializeTastytrade({ username = null, password = null } = {}) {
   try {
     validateEnvironment();
 
-    // If client exists and we are not forcing a new login, just return success
-    if (tastytradeClient && !username && !password) {
-      return { success: true };
-    }
-
-    console.log(
-      "Initializing Tastytrade with URL:",
-      process.env.TASTYTRADE_BASE_URL
-    );
-
-    // Initialize client without fixed refresh token
     const config = {
       baseUrl: process.env.TASTYTRADE_BASE_URL,
       accountStreamerUrl: "wss://streamer.tastyworks.com",
@@ -54,105 +62,292 @@ async function initializeTastytrade({ username = null, password = null } = {}) {
       oauthScopes: ["read", "trade"],
     };
 
-    // Create new client (or overwrite existing if login requested)
-    tastytradeClient = new TastytradeClient(config);
-
-    if (username && password) {
-      console.log("Logging in with username/password...");
-      await tastytradeClient.sessionService.login(username, password);
-      console.log("Login successful via SDK");
+    if (process.env.TASTYTRADE_REFRESH_TOKEN) {
+      config.refreshToken = process.env.TASTYTRADE_REFRESH_TOKEN;
     }
 
-    return {
-      success: true,
-    };
+    // 1. Explicit Login Request
+    if (username && password) {
+      console.log(
+        "Initializing Tastytrade with URL:",
+        process.env.TASTYTRADE_BASE_URL
+      );
+      tastytradeClient = new TastytradeClient(config);
+
+      console.log("Logging in with username/password...");
+      const sessionData = await tastytradeClient.sessionService.login(
+        username,
+        password,
+        true
+      );
+      isSessionActive = true;
+      console.log("Login successful via SDK");
+
+      try {
+        if (sessionData["remember-token"]) {
+          const saveData = {
+            username: username,
+            rememberToken: sessionData["remember-token"],
+          };
+          fs.writeFileSync(SESSION_FILE, JSON.stringify(saveData, null, 2));
+          console.log("Session saved to disk");
+        }
+      } catch (saveError) {
+        console.error("Failed to save session to disk:", saveError.message);
+      }
+      return { success: true };
+    }
+
+    // 2. Already Active
+    if (tastytradeClient && isSessionActive) {
+      return { success: true };
+    }
+
+    // 3. Environmental Refresh Token (Implicit Login)
+    if (process.env.TASTYTRADE_REFRESH_TOKEN) {
+      if (!tastytradeClient) {
+        tastytradeClient = new TastytradeClient(config);
+      }
+      isSessionActive = true;
+      console.log(
+        "Initialized using TASTYTRADE_REFRESH_TOKEN from environment."
+      );
+      return { success: true };
+    }
+
+    // 4. Auto-Login from Disk
+    if (fs.existsSync(SESSION_FILE)) {
+      try {
+        const savedSession = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8"));
+        if (savedSession.username && savedSession.rememberToken) {
+          if (!tastytradeClient)
+            tastytradeClient = new TastytradeClient(config);
+
+          console.log("Attempting auto-login from disk...");
+          const sessionData =
+            await tastytradeClient.sessionService.loginWithRememberToken(
+              savedSession.username,
+              savedSession.rememberToken,
+              true
+            );
+
+          isSessionActive = true;
+          console.log("Auto-login successful using saved session");
+
+          if (
+            sessionData["remember-token"] &&
+            sessionData["remember-token"] !== savedSession.rememberToken
+          ) {
+            const saveData = {
+              username: savedSession.username,
+              rememberToken: sessionData["remember-token"],
+            };
+            fs.writeFileSync(SESSION_FILE, JSON.stringify(saveData, null, 2));
+          }
+          return { success: true };
+        }
+      } catch (autoLoginError) {
+        console.error("Auto-login from disk failed:", autoLoginError.message);
+        try {
+          fs.unlinkSync(SESSION_FILE);
+        } catch (e) {}
+      }
+    }
+
+    // 5. Fallback Initializer (Anonymous)
+    if (!tastytradeClient) {
+      tastytradeClient = new TastytradeClient(config);
+    }
+
+    return { success: false, message: "Client initialized but not logged in" };
   } catch (error) {
     console.error("Authentication error details:", {
       message: error.message,
       stack: error.stack,
     });
+    if (username && password) {
+      isSessionActive = false;
+      tastytradeClient = null;
+    }
     throw new Error(`Failed to authenticate with Tastytrade: ${error.message}`);
   }
 }
 
-// Helper to access the initialized client
+function isLoggedIn() {
+  return !!tastytradeClient && isSessionActive;
+}
+
 function getClient() {
   if (!tastytradeClient) {
     throw new Error("Tastytrade client not initialized");
   }
+  if (!isSessionActive) {
+    throw new Error("Tastytrade session is not active. Please log in.");
+  }
   return tastytradeClient;
 }
 
-// ... existing logic but refactored to use client ...
+// Service Wrappers
 
-// Note: Removed sessionToken param as it is handled by the client internall via OAuth
-async function getQuote(symbol) {
-  try {
-    // Determine last price using market-data API
-    // Note: The SDK's marketDataService is for streaming. For snapshots, we use raw HTTP client.
-    const client = getClient();
-    const marketData = await client.httpClient.getData(
-      `/market-data/Equity/${symbol}`
-    );
+const RATE_LIMIT_DELAY = 300;
+const MAX_RETRIES = 3;
 
-    // SDK returns the data payload directly if unwrapped, or axios response.
-    // Let's assume unwrapped based on typical SDK behavior, but handle both just in case.
-    const quoteData = marketData.data || marketData;
-
-    return {
-      symbol: quoteData.symbol,
-      last: quoteData.last,
-      bid: quoteData.bid,
-      ask: quoteData.ask,
-      volume: quoteData.volume,
-    };
-  } catch (error) {
-    console.error(
-      "Quote error details:",
-      error.response?.data || error.message
-    );
-    throw new Error(`Failed to fetch quote for ${symbol}: ${error.message}`);
+async function getQuotes(symbols) {
+  if (!Array.isArray(symbols)) {
+    return [await getQuote(symbols)];
   }
+
+  const chunks = [];
+  for (let i = 0; i < symbols.length; i += 50) {
+    chunks.push(symbols.slice(i, i + 50));
+  }
+
+  const results = [];
+
+  for (const chunk of chunks) {
+    let retries = 0;
+    while (retries < MAX_RETRIES) {
+      try {
+        const client = getClient();
+        const indices = ["SPX", "VIX", "RUT", "NDX", "DJX"];
+        let url = "";
+
+        // Determine if any symbol is likely an index
+        const hasIndex = chunk.some((s) => indices.includes(s));
+
+        if (hasIndex) {
+          const equitySyms = chunk.filter((s) => !indices.includes(s));
+          const indexSyms = chunk.filter((s) => indices.includes(s));
+
+          let queryParts = [];
+          if (equitySyms.length > 0)
+            queryParts.push(`equity=${equitySyms.join(",")}`);
+          if (indexSyms.length > 0)
+            queryParts.push(`index=${indexSyms.join(",")}`);
+
+          url = `/market-data/by-type?${queryParts.join("&")}`;
+        } else {
+          url = `/market-data/by-type?equity=${chunk.join(",")}`;
+        }
+
+        console.log(`Fetching quotes URL: ${url}`);
+        const marketData = await client.httpClient.getData(url);
+
+        console.log(`Received market data for ${chunk.length} symbols`);
+
+        if (marketData.headers && marketData.headers["x-ratelimit-remaining"]) {
+          const remaining = parseInt(
+            marketData.headers["x-ratelimit-remaining"],
+            10
+          );
+          if (remaining < 10) {
+            console.warn(
+              `Rate limit warning for chunk: ${remaining} requests remaining.`
+            );
+          }
+        }
+
+        const responseBody = marketData.data || marketData;
+
+        // Simplified extraction as per verified structure:
+        // { data: { items: [...] } }
+        const items = responseBody.data?.items || [];
+        const quotes = items.map((quoteData) => ({
+          symbol: quoteData.symbol,
+          last: quoteData.last,
+          bid: quoteData.bid,
+          ask: quoteData.ask,
+          volume: quoteData.volume,
+        }));
+
+        results.push(...quotes);
+        break; // Success, move to next chunk
+      } catch (error) {
+        if (error.response?.status === 429) {
+          retries++;
+          if (retries >= MAX_RETRIES) {
+            console.error(
+              `Max retries reached for chunk starting with ${chunk[0]} after 429 Token limit`
+            );
+            // Instead of throwing, maybe return empty for this chunk or rethrow?
+            // Throwing stops everything. Let's throw to be consistent with existing logic,
+            // but caller needs to handle it.
+            // Actually, if we throw, we lose partial results.
+            // But existing code throws on single symbol failure.
+            throw new Error(
+              `Failed to fetch quotes for chunk: Rate limit exceeded`
+            );
+          }
+          let delay = RATE_LIMIT_DELAY * Math.pow(2, retries - 1);
+
+          if (error.response?.headers) {
+            const reset = error.response.headers["x-ratelimit-reset"];
+            if (reset) {
+              const resetTime = parseInt(reset, 10);
+              const resetMs =
+                resetTime < 100000000000 ? resetTime * 1000 : resetTime;
+              const now = Date.now();
+
+              if (resetMs > now) {
+                delay = resetMs - now + 200;
+                console.log(
+                  `Rate limit reset detected. Adjusting wait to ${delay}ms.`
+                );
+              }
+            }
+          }
+
+          console.log(
+            `Rate limit 429 hit for chunk. Retrying in ${delay}ms...`
+          );
+          await sleep(delay);
+          continue;
+        }
+
+        handleApiError(error);
+        console.error(
+          "Quote chunk error details:",
+          error.response?.data || error.message
+        );
+        // If one chunk fails non-429, we probably want to continue with others?
+        // But throwing is safer to alert issues.
+        // We'll throw, and caller decides.
+        throw new Error(`Failed to fetch quotes for chunk: ${error.message}`);
+      }
+    }
+  }
+  return results;
+}
+
+async function getQuote(symbol) {
+  const result = await getQuotes([symbol]);
+  return result[0];
 }
 
 async function findNextExpiration(chainResponse, today) {
-  // Chain response structure might differ if SDK wraps it?
-  // Assuming standard API response structure: { data: { items: [...] } } or { items: [...] }
   const data = chainResponse.data || chainResponse;
-
-  if (!data?.items) {
-    throw new Error("No option chain data received");
-  }
+  if (!data?.items) throw new Error("No option chain data received");
 
   const option = data.items[0].expirations.find((expiration) => {
     const isWeeklyOrRegular = ["Weekly", "Regular"].includes(
       expiration["expiration-type"]
     );
-
     const daysToExpiration = expiration["days-to-expiration"];
-
-    const isValidExpiration = daysToExpiration > 3 && daysToExpiration <= 10;
-
-    return isWeeklyOrRegular && isValidExpiration;
+    return isWeeklyOrRegular && daysToExpiration > 3 && daysToExpiration <= 10;
   });
 
-  if (!option) {
-    throw new Error("No valid expiration found in option chain");
-  }
-
+  if (!option) throw new Error("No valid expiration found in option chain");
   return option;
 }
 
 async function findStrikeAbovePrice(option, currentPrice) {
   const strike = option.strikes.find((strike) => {
-    const isCall = strike.call !== null;
-    const isAbovePrice = parseFloat(strike["strike-price"]) > currentPrice;
-    return isCall && isAbovePrice;
+    return (
+      strike.call !== null && parseFloat(strike["strike-price"]) > currentPrice
+    );
   });
 
-  if (!strike) {
-    throw new Error("No valid strike found above current price");
-  }
+  if (!strike) throw new Error("No valid strike found above current price");
 
   return {
     ...option,
@@ -166,13 +361,8 @@ async function getOptionQuote(option) {
   const optionQuoteResponse = await client.httpClient.getData(
     `/market-data/Equity Option/${option.symbol}`
   );
-
   const data = optionQuoteResponse.data || optionQuoteResponse;
-
-  if (!data) {
-    throw new Error("No option quote data received");
-  }
-
+  if (!data) throw new Error("No option quote data received");
   return {
     ...option,
     bid: data.bid,
@@ -181,60 +371,41 @@ async function getOptionQuote(option) {
   };
 }
 
-// Note: Removed sessionToken param
 async function getNextOption(symbol, quoteData) {
   try {
-    if (!quoteData) {
-      throw new Error("Quote data is required");
-    }
+    if (!quoteData) throw new Error("Quote data is required");
 
     const currentBid = parseFloat(quoteData.bid);
     const currentAsk = parseFloat(quoteData.ask);
     const currentPrice = (currentBid + currentAsk) / 2;
     const today = new Date().toISOString().split("T")[0];
 
-    // Get the option chain data using SDK (InstrumentsService)
-    // Or just fetch the nested chain URL directly like before if easier?
-    // Let's use SDK service method properly.
     const client = getClient();
-    // Use raw request for nested chain for simplicity matching old URL structure if SDK method is complex
     const chainResponse = await client.httpClient.getData(
       `/option-chains/${symbol}/nested`
     );
 
-    // Find the next expiration
     const expiration = await findNextExpiration(chainResponse, today);
-
-    // Find the strike above current price
     const strike = await findStrikeAbovePrice(expiration, currentPrice);
-
-    // Get the option quote
     return await getOptionQuote(strike);
   } catch (error) {
+    handleApiError(error);
     throw new Error(
       `Failed to fetch option chain for ${symbol}: ${error.message}`
     );
   }
 }
 
-// Note: Removed sessionToken param
 async function getAccountHistory(startDate, endDate) {
   try {
+    const client = getClient();
     const defaultStartDate = "2024-11-01";
     const defaultEndDate = new Date().toISOString().split("T")[0];
 
-    startDate = startDate || defaultStartDate;
-    endDate = endDate || defaultEndDate;
-
-    const client = getClient();
-
-    // Using SDK Service
-    // Note: getAccountTransactions takes (accountNumber, queryParams)
-    // We map params to object
     let params = {
       sort: "Asc",
-      "start-at": startDate,
-      "end-date": endDate,
+      "start-at": startDate || defaultStartDate,
+      "end-date": endDate || defaultEndDate,
     };
 
     let response = await client.transactionsService.getAccountTransactions(
@@ -243,38 +414,28 @@ async function getAccountHistory(startDate, endDate) {
     );
 
     let data = response.data || response;
-
     if (!data?.items) {
-      // Maybe wrapped differently?
-      if (Array.isArray(response)) return response; // Some SDKs return array directly
-      // Fallback
+      if (Array.isArray(response)) return response;
       throw new Error("No account history data received");
     }
 
     let allTransactions = data.items;
-
-    // Pagination handling
-    // We need to loop if pages exist
     while (
       data.pagination &&
       data.pagination["page-offset"] < data.pagination["total-pages"]
     ) {
-      const nextPageOffset = data.pagination["page-offset"] + 1;
-      params["page-offset"] = nextPageOffset;
-
+      params["page-offset"] = data.pagination["page-offset"] + 1;
       response = await client.transactionsService.getAccountTransactions(
         process.env.TASTYTRADE_ACCOUNT_NUMBER,
         params
       );
-
       data = response.data || response;
-      if (!data?.items) {
-        break;
-      }
+      if (!data?.items) break;
       allTransactions = allTransactions.concat(data.items);
     }
     return allTransactions;
   } catch (error) {
+    handleApiError(error);
     console.error(
       "Account history error details:",
       error.response?.data || error.message
@@ -283,7 +444,6 @@ async function getAccountHistory(startDate, endDate) {
   }
 }
 
-// Note: Removed sessionToken param
 async function getPositions() {
   try {
     const client = getClient();
@@ -292,39 +452,23 @@ async function getPositions() {
     );
 
     const data = response.data || response;
+    if (!data?.items) throw new Error("No positions data received");
 
-    if (!data?.items) {
-      throw new Error("No positions data received");
-    }
-
-    // Group positions by underlying symbol
     const positionsBySymbol = data.items.reduce((acc, item) => {
       const symbol = item["underlying-symbol"];
-      if (!acc[symbol]) {
-        acc[symbol] = {
-          equity: null,
-          option: null,
-        };
-      }
-
-      if (item["instrument-type"] === "Equity") {
-        acc[symbol].equity = item;
-      } else if (item["instrument-type"] === "Equity Option") {
+      if (!acc[symbol]) acc[symbol] = { equity: null, option: null };
+      if (item["instrument-type"] === "Equity") acc[symbol].equity = item;
+      else if (item["instrument-type"] === "Equity Option")
         acc[symbol].option = item;
-      }
       return acc;
     }, {});
 
-    // Convert grouped positions into aggregated records
-    // Note: accountHistory was unused in original code, removing it.
-
-    const aggregatedPositions = Object.entries(positionsBySymbol)
+    return Object.entries(positionsBySymbol)
       .filter(([_, data]) => data.equity && data.option)
       .map(([symbol, data]) => {
         const optionSymbol = data.option.symbol;
         const match = optionSymbol.match(/(\d{5})(\d{3})$/);
         const optionPrice = match ? parseFloat(`${match[1]}.${match[2]}`) : 0;
-
         return {
           ...data.equity,
           "close-price": data.equity["close-price"],
@@ -332,9 +476,8 @@ async function getPositions() {
           "average-open-price": data.equity["average-open-price"],
         };
       });
-
-    return aggregatedPositions;
   } catch (error) {
+    handleApiError(error);
     console.error(
       "Positions error details:",
       error.response?.data || error.message
@@ -350,15 +493,22 @@ async function logout() {
     console.log("Logged out successfully");
   } catch (error) {
     console.error("Logout error:", error.message);
-    // Best effort logout
+  } finally {
+    isSessionActive = false;
+    tastytradeClient = null;
+    try {
+      if (fs.existsSync(SESSION_FILE)) fs.unlinkSync(SESSION_FILE);
+    } catch (e) {}
   }
 }
 
 module.exports = {
   initializeTastytrade,
   getQuote,
+  getQuotes,
   getNextOption,
   getAccountHistory,
   getPositions,
   logout,
+  isLoggedIn,
 };
