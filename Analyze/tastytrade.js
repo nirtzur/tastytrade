@@ -312,6 +312,10 @@ async function getOptionQuote(option) {
 
 async function getNextOption(symbol, quoteData) {
   try {
+    if (!isLoggedIn()) {
+      await initializeTastytrade();
+    }
+
     if (!quoteData) throw new Error("Quote data is required");
 
     const currentBid = parseFloat(quoteData.bid);
@@ -337,6 +341,9 @@ async function getNextOption(symbol, quoteData) {
 
 async function getAccountHistory(startDate, endDate) {
   try {
+    if (!isLoggedIn()) {
+      await initializeTastytrade();
+    }
     const client = getClient();
     const defaultStartDate = "2024-11-01";
     const defaultEndDate = new Date().toISOString().split("T")[0];
@@ -385,6 +392,9 @@ async function getAccountHistory(startDate, endDate) {
 
 async function getPositions() {
   try {
+    if (!isLoggedIn()) {
+      await initializeTastytrade();
+    }
     const client = getClient();
     const response = await client.balancesAndPositionsService.getPositionsList(
       process.env.TASTYTRADE_ACCOUNT_NUMBER
