@@ -45,9 +45,10 @@ function handleApiError(error) {
     console.log("Session expired or invalid, marking session as inactive.");
     isSessionActive = false;
     tastytradeClient = null;
-    try {
-      if (fs.existsSync(SESSION_FILE)) fs.unlinkSync(SESSION_FILE);
-    } catch (e) {}
+    // Do NOT delete the session file here.
+    // The session file contains the 'remember-token' (Refresh Token) which is long-lived.
+    // We need it to re-login when initializeTastytrade() is called next.
+    // If that re-login fails, initializeTastytrade will handle the deletion.
   }
 }
 
@@ -208,6 +209,15 @@ async function getQuotes(symbols) {
     let retries = 0;
     while (retries < MAX_RETRIES) {
       try {
+        // Auto-reconnect logic
+        if (!isSessionActive) {
+          console.log("Session inactive. Attempting re-login...");
+          await initializeTastytrade();
+          if (!isSessionActive) {
+            throw new Error("Tastytrade session is not active. Please log in.");
+          }
+        }
+
         const client = getClient();
         const indices = ["SPX", "VIX", "RUT", "NDX", "DJX"];
         let url = "";
@@ -263,6 +273,17 @@ async function getQuotes(symbols) {
         results.push(...quotes);
         break; // Success, move to next chunk
       } catch (error) {
+        // Handle 401 Unauthorized - Re-login attempt
+        if (error.response?.status === 401) {
+          console.warn(
+            "Received 401 Unauthorized. Invalidating session and retrying..."
+          );
+          handleApiError(error); // Marks session inactive
+          retries++;
+          await sleep(1000); // Wait a bit before re-login attempt
+          continue;
+        }
+
         if (error.response?.status === 429) {
           retries++;
           if (retries >= MAX_RETRIES) {
