@@ -5,8 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const TastytradeClient = require("@tastytrade/api").default;
 
-const SESSION_FILE = path.join(__dirname, "../tastytrade-session.json");
-
 // Setup global WebSocket and window as required by the library for Node.js usage
 global.WebSocket = WebSocket;
 global.window = {
@@ -35,26 +33,27 @@ function validateEnvironment() {
 const baseUrl = process.env.TASTYTRADE_BASE_URL;
 
 let tastytradeClient = null;
-let isSessionActive = false;
+let sessionExpiration = 0;
 
 function handleApiError(error) {
   if (
     error.response?.status === 401 ||
     (error.message && error.message.includes("401"))
   ) {
-    console.log("Session expired or invalid, marking session as inactive.");
-    isSessionActive = false;
+    console.log("Session expired or invalid (401). Resetting session.");
+    sessionExpiration = 0;
     tastytradeClient = null;
-    // Do NOT delete the session file here.
-    // The session file contains the 'remember-token' (Refresh Token) which is long-lived.
-    // We need it to re-login when initializeTastytrade() is called next.
-    // If that re-login fails, initializeTastytrade will handle the deletion.
   }
 }
 
-async function initializeTastytrade({ username = null, password = null } = {}) {
+async function initializeTastytrade() {
   try {
     validateEnvironment();
+
+    // 1. Check if session is explicitly valid based on time
+    if (tastytradeClient && Date.now() < sessionExpiration) {
+      return { success: true };
+    }
 
     const config = {
       baseUrl: process.env.TASTYTRADE_BASE_URL,
@@ -63,126 +62,45 @@ async function initializeTastytrade({ username = null, password = null } = {}) {
       oauthScopes: ["read", "trade"],
     };
 
+    // 2. Initialize with Refresh Token from Environment
     if (process.env.TASTYTRADE_REFRESH_TOKEN) {
       config.refreshToken = process.env.TASTYTRADE_REFRESH_TOKEN;
-    }
 
-    // 1. Explicit Login Request
-    if (username && password) {
-      console.log(
-        "Initializing Tastytrade with URL:",
-        process.env.TASTYTRADE_BASE_URL
-      );
+      console.log("Initializing/Refreshing Tastytrade session...");
       tastytradeClient = new TastytradeClient(config);
 
-      console.log("Logging in with username/password...");
-      const sessionData = await tastytradeClient.sessionService.login(
-        username,
-        password,
-        true
-      );
-      isSessionActive = true;
-      console.log("Login successful via SDK");
+      // We assume the new client will obtain an access token shortly.
+      // Set expiration to 15 minutes from now.
+      sessionExpiration = Date.now() + 15 * 60 * 1000;
 
-      try {
-        if (sessionData["remember-token"]) {
-          const saveData = {
-            username: username,
-            rememberToken: sessionData["remember-token"],
-          };
-          fs.writeFileSync(SESSION_FILE, JSON.stringify(saveData, null, 2));
-          console.log("Session saved to disk");
-        }
-      } catch (saveError) {
-        console.error("Failed to save session to disk:", saveError.message);
-      }
       return { success: true };
     }
 
-    // 2. Already Active
-    if (tastytradeClient && isSessionActive) {
-      return { success: true };
-    }
-
-    // 3. Environmental Refresh Token (Implicit Login)
-    if (process.env.TASTYTRADE_REFRESH_TOKEN) {
-      if (!tastytradeClient) {
-        tastytradeClient = new TastytradeClient(config);
-      }
-      isSessionActive = true;
-      console.log(
-        "Initialized using TASTYTRADE_REFRESH_TOKEN from environment."
-      );
-      return { success: true };
-    }
-
-    // 4. Auto-Login from Disk
-    if (fs.existsSync(SESSION_FILE)) {
-      try {
-        const savedSession = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8"));
-        if (savedSession.username && savedSession.rememberToken) {
-          if (!tastytradeClient)
-            tastytradeClient = new TastytradeClient(config);
-
-          console.log("Attempting auto-login from disk...");
-          const sessionData =
-            await tastytradeClient.sessionService.loginWithRememberToken(
-              savedSession.username,
-              savedSession.rememberToken,
-              true
-            );
-
-          isSessionActive = true;
-          console.log("Auto-login successful using saved session");
-
-          if (
-            sessionData["remember-token"] &&
-            sessionData["remember-token"] !== savedSession.rememberToken
-          ) {
-            const saveData = {
-              username: savedSession.username,
-              rememberToken: sessionData["remember-token"],
-            };
-            fs.writeFileSync(SESSION_FILE, JSON.stringify(saveData, null, 2));
-          }
-          return { success: true };
-        }
-      } catch (autoLoginError) {
-        console.error("Auto-login from disk failed:", autoLoginError.message);
-        try {
-          fs.unlinkSync(SESSION_FILE);
-        } catch (e) {}
-      }
-    }
-
-    // 5. Fallback Initializer (Anonymous)
-    if (!tastytradeClient) {
-      tastytradeClient = new TastytradeClient(config);
-    }
-
-    return { success: false, message: "Client initialized but not logged in" };
+    // 3. Fallback
+    return {
+      success: false,
+      message: "No refresh token available to initialize session",
+    };
   } catch (error) {
     console.error("Authentication error details:", {
       message: error.message,
       stack: error.stack,
     });
-    if (username && password) {
-      isSessionActive = false;
-      tastytradeClient = null;
-    }
+    sessionExpiration = 0;
+    tastytradeClient = null;
     throw new Error(`Failed to authenticate with Tastytrade: ${error.message}`);
   }
 }
 
 function isLoggedIn() {
-  return !!tastytradeClient && isSessionActive;
+  return !!tastytradeClient && Date.now() < sessionExpiration;
 }
 
 function getClient() {
   if (!tastytradeClient) {
     throw new Error("Tastytrade client not initialized");
   }
-  if (!isSessionActive) {
+  if (!isLoggedIn()) {
     throw new Error("Tastytrade session is not active. Please log in.");
   }
   return tastytradeClient;
@@ -210,10 +128,10 @@ async function getQuotes(symbols) {
     while (retries < MAX_RETRIES) {
       try {
         // Auto-reconnect logic
-        if (!isSessionActive) {
+        if (!isLoggedIn()) {
           console.log("Session inactive. Attempting re-login...");
           await initializeTastytrade();
-          if (!isSessionActive) {
+          if (!isLoggedIn()) {
             throw new Error("Tastytrade session is not active. Please log in.");
           }
         }
@@ -515,11 +433,8 @@ async function logout() {
   } catch (error) {
     console.error("Logout error:", error.message);
   } finally {
-    isSessionActive = false;
+    sessionExpiration = 0;
     tastytradeClient = null;
-    try {
-      if (fs.existsSync(SESSION_FILE)) fs.unlinkSync(SESSION_FILE);
-    } catch (e) {}
   }
 }
 
