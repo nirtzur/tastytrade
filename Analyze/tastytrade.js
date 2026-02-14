@@ -27,7 +27,7 @@ function validateEnvironment() {
   const missing = REQUIRED_ENV_VARS.filter((varName) => !process.env[varName]);
   if (missing.length > 0) {
     throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}`
+      `Missing required environment variables: ${missing.join(", ")}`,
     );
   }
 }
@@ -80,7 +80,7 @@ async function initializeTastytrade() {
         // but logging it is good.
         console.warn(
           "Initial session validation warn (might auto-resolve):",
-          valError.message
+          valError.message,
         );
       }
 
@@ -179,11 +179,11 @@ async function getQuotes(symbols) {
         if (marketData.headers && marketData.headers["x-ratelimit-remaining"]) {
           const remaining = parseInt(
             marketData.headers["x-ratelimit-remaining"],
-            10
+            10,
           );
           if (remaining < 10) {
             console.warn(
-              `Rate limit warning for chunk: ${remaining} requests remaining.`
+              `Rate limit warning for chunk: ${remaining} requests remaining.`,
             );
           }
         }
@@ -207,7 +207,7 @@ async function getQuotes(symbols) {
         // Handle 401 Unauthorized - Re-login attempt
         if (error.response?.status === 401) {
           console.warn(
-            "Received 401 Unauthorized. Invalidating session and retrying..."
+            "Received 401 Unauthorized. Invalidating session and retrying...",
           );
           handleApiError(error); // Marks session inactive
           retries++;
@@ -219,7 +219,7 @@ async function getQuotes(symbols) {
           retries++;
           if (retries >= MAX_RETRIES) {
             console.error(
-              `Max retries reached for chunk starting with ${chunk[0]} after 429 Token limit`
+              `Max retries reached for chunk starting with ${chunk[0]} after 429 Token limit`,
             );
             // Instead of throwing, maybe return empty for this chunk or rethrow?
             // Throwing stops everything. Let's throw to be consistent with existing logic,
@@ -227,7 +227,7 @@ async function getQuotes(symbols) {
             // Actually, if we throw, we lose partial results.
             // But existing code throws on single symbol failure.
             throw new Error(
-              `Failed to fetch quotes for chunk: Rate limit exceeded`
+              `Failed to fetch quotes for chunk: Rate limit exceeded`,
             );
           }
           let delay = RATE_LIMIT_DELAY * Math.pow(2, retries - 1);
@@ -243,14 +243,14 @@ async function getQuotes(symbols) {
               if (resetMs > now) {
                 delay = resetMs - now + 200;
                 console.log(
-                  `Rate limit reset detected. Adjusting wait to ${delay}ms.`
+                  `Rate limit reset detected. Adjusting wait to ${delay}ms.`,
                 );
               }
             }
           }
 
           console.log(
-            `Rate limit 429 hit for chunk. Retrying in ${delay}ms...`
+            `Rate limit 429 hit for chunk. Retrying in ${delay}ms...`,
           );
           await sleep(delay);
           continue;
@@ -259,7 +259,7 @@ async function getQuotes(symbols) {
         handleApiError(error);
         console.error(
           "Quote chunk error details:",
-          error.response?.data || error.message
+          error.response?.data || error.message,
         );
         // If one chunk fails non-429, we probably want to continue with others?
         // But throwing is safer to alert issues.
@@ -279,28 +279,29 @@ async function getQuote(symbol) {
 async function findNextExpiration(chainResponse, today) {
   const responseBody = chainResponse.data || chainResponse;
 
-  // Expected structure: { data: { items: [...] }, context: ... }
-  // We need items array from deeply nested property
+  // The structure is typically { data: { items: [...] }, context: ... }
+  // So we need to look into responseBody.data.items
   let items = responseBody.data?.items;
 
-  // Fallback heuristic
+  // Fallback if structure is different (e.g. direct items array)
   if (!items) {
     if (responseBody.items) items = responseBody.items;
     else if (Array.isArray(responseBody)) items = responseBody;
   }
 
   if (!items || items.length === 0) {
-    throw new Error("No option chain items found in response");
+    // console.error("Option chain response structure invalid:", JSON.stringify(responseBody, null, 2));
+    throw new Error("No option chain data received or invalid structure");
   }
 
-  const firstItem = items[0];
-  if (!firstItem || !firstItem.expirations) {
-    throw new Error("Option chain item missing expirations data");
+  // Ensure we have expirations array in the first item
+  if (!items[0] || !items[0].expirations) {
+    throw new Error("Option chain data missing expirations");
   }
 
-  const option = firstItem.expirations.find((expiration) => {
+  const option = items[0].expirations.find((expiration) => {
     const isWeeklyOrRegular = ["Weekly", "Regular"].includes(
-      expiration["expiration-type"]
+      expiration["expiration-type"],
     );
     const daysToExpiration = expiration["days-to-expiration"];
     return isWeeklyOrRegular && daysToExpiration > 3 && daysToExpiration <= 10;
@@ -329,7 +330,7 @@ async function findStrikeAbovePrice(option, currentPrice) {
 async function getOptionQuote(option) {
   const client = getClient();
   const optionQuoteResponse = await client.httpClient.getData(
-    `/market-data/Equity Option/${option.symbol}`
+    `/market-data/Equity Option/${option.symbol}`,
   );
   const data = optionQuoteResponse.data || optionQuoteResponse;
   if (!data) throw new Error("No option quote data received");
@@ -356,7 +357,7 @@ async function getNextOption(symbol, quoteData) {
 
     const client = getClient();
     const chainResponse = await client.httpClient.getData(
-      `/option-chains/${symbol}/nested`
+      `/option-chains/${symbol}/nested`,
     );
 
     const expiration = await findNextExpiration(chainResponse, today);
@@ -365,7 +366,7 @@ async function getNextOption(symbol, quoteData) {
   } catch (error) {
     handleApiError(error);
     throw new Error(
-      `Failed to fetch option chain for ${symbol}: ${error.message}`
+      `Failed to fetch option chain for ${symbol}: ${error.message}`,
     );
   }
 }
@@ -387,7 +388,7 @@ async function getAccountHistory(startDate, endDate) {
 
     let response = await client.transactionsService.getAccountTransactions(
       process.env.TASTYTRADE_ACCOUNT_NUMBER,
-      params
+      params,
     );
 
     let data = response.data || response;
@@ -404,7 +405,7 @@ async function getAccountHistory(startDate, endDate) {
       params["page-offset"] = data.pagination["page-offset"] + 1;
       response = await client.transactionsService.getAccountTransactions(
         process.env.TASTYTRADE_ACCOUNT_NUMBER,
-        params
+        params,
       );
       data = response.data || response;
       if (!data?.items) break;
@@ -415,7 +416,7 @@ async function getAccountHistory(startDate, endDate) {
     handleApiError(error);
     console.error(
       "Account history error details:",
-      error.response?.data || error.message
+      error.response?.data || error.message,
     );
     throw new Error(`Failed to fetch account history: ${error.message}`);
   }
@@ -428,7 +429,7 @@ async function getPositions() {
     }
     const client = getClient();
     const response = await client.balancesAndPositionsService.getPositionsList(
-      process.env.TASTYTRADE_ACCOUNT_NUMBER
+      process.env.TASTYTRADE_ACCOUNT_NUMBER,
     );
 
     const data = response.data || response;
@@ -460,7 +461,7 @@ async function getPositions() {
     handleApiError(error);
     console.error(
       "Positions error details:",
-      error.response?.data || error.message
+      error.response?.data || error.message,
     );
     throw new Error(`Failed to fetch positions: ${error.message}`);
   }
