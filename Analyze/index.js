@@ -135,7 +135,8 @@ async function getDaysToEarnings(symbol) {
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const isDebug = args.includes("-debug");
+const isDebug =
+  args.includes("-debug") || process.env.NODE_ENV === "development";
 const symbols = args
   .filter((arg) => arg !== "-debug")
   .map((symbol) => symbol.toUpperCase());

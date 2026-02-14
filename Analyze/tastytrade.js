@@ -15,10 +15,12 @@ global.window = {
 require("dotenv").config();
 
 // Validate required environment variables
+// Since password login is removed, TASTYTRADE_REFRESH_TOKEN is now mandatory.
 const REQUIRED_ENV_VARS = [
   "TASTYTRADE_BASE_URL",
   "TASTYTRADE_ACCOUNT_NUMBER",
   "TASTYTRADE_CLIENT_SECRET",
+  "TASTYTRADE_REFRESH_TOKEN",
 ];
 
 function validateEnvironment() {
@@ -69,6 +71,19 @@ async function initializeTastytrade() {
       console.log("Initializing/Refreshing Tastytrade session...");
       tastytradeClient = new TastytradeClient(config);
 
+      // Trigger an initial session validation to ensure we are actually connected
+      try {
+        await tastytradeClient.sessionService.validate();
+        console.log("Session validated successfully via SDK");
+      } catch (valError) {
+        // If generic validation fails, we might still be okay if sdk auto-refreshes,
+        // but logging it is good.
+        console.warn(
+          "Initial session validation warn (might auto-resolve):",
+          valError.message
+        );
+      }
+
       // We assume the new client will obtain an access token shortly.
       // Set expiration to 15 minutes from now.
       sessionExpiration = Date.now() + 15 * 60 * 1000;
@@ -76,11 +91,9 @@ async function initializeTastytrade() {
       return { success: true };
     }
 
-    // 3. Fallback
-    return {
-      success: false,
-      message: "No refresh token available to initialize session",
-    };
+    // This part should be unreachable now due to validateEnvironment,
+    // but throwing explicitly is safer.
+    throw new Error("No refresh token available to initialize session");
   } catch (error) {
     console.error("Authentication error details:", {
       message: error.message,
@@ -264,10 +277,28 @@ async function getQuote(symbol) {
 }
 
 async function findNextExpiration(chainResponse, today) {
-  const data = chainResponse.data || chainResponse;
-  if (!data?.items) throw new Error("No option chain data received");
+  const responseBody = chainResponse.data || chainResponse;
 
-  const option = data.items[0].expirations.find((expiration) => {
+  // Expected structure: { data: { items: [...] }, context: ... }
+  // We need items array from deeply nested property
+  let items = responseBody.data?.items;
+
+  // Fallback heuristic
+  if (!items) {
+    if (responseBody.items) items = responseBody.items;
+    else if (Array.isArray(responseBody)) items = responseBody;
+  }
+
+  if (!items || items.length === 0) {
+    throw new Error("No option chain items found in response");
+  }
+
+  const firstItem = items[0];
+  if (!firstItem || !firstItem.expirations) {
+    throw new Error("Option chain item missing expirations data");
+  }
+
+  const option = firstItem.expirations.find((expiration) => {
     const isWeeklyOrRegular = ["Weekly", "Regular"].includes(
       expiration["expiration-type"]
     );
