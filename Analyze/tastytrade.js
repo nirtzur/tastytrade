@@ -332,7 +332,10 @@ async function getOptionQuote(option) {
   const optionQuoteResponse = await client.httpClient.getData(
     `/market-data/Equity Option/${option.symbol}`,
   );
-  const data = optionQuoteResponse.data || optionQuoteResponse;
+  let data = optionQuoteResponse.data || optionQuoteResponse;
+  if (data && data.data) {
+    data = data.data;
+  }
   if (!data) throw new Error("No option quote data received");
   return {
     ...option,
