@@ -54,7 +54,7 @@ async function fetchFinnhubPriceWithRetry(symbol, maxRetries = 2) {
         retries++;
         const delay = 1000; // Fixed 1 second delay
         logInfo(
-          `Rate limit hit for ${symbol}, retrying in ${delay}ms (Attempt ${retries}/${maxRetries})`
+          `Rate limit hit for ${symbol}, retrying in ${delay}ms (Attempt ${retries}/${maxRetries})`,
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
@@ -88,7 +88,7 @@ async function syncTransactions() {
     const formatDate = (date) => date.toISOString().split(".")[0];
     const transactions = await getAccountHistory(
       formatDate(lastSync),
-      formatDate(now)
+      formatDate(now),
     );
 
     if (!Array.isArray(transactions) || transactions.length === 0) {
@@ -108,10 +108,10 @@ async function syncTransactions() {
     });
 
     const existingIds = new Set(
-      existingTransactions.map((tx) => String(tx.transaction_id))
+      existingTransactions.map((tx) => String(tx.transaction_id)),
     );
     const newTransactions = transactions.filter(
-      (tx) => !existingIds.has(String(tx.id))
+      (tx) => !existingIds.has(String(tx.id)),
     );
 
     if (newTransactions.length === 0) {
@@ -148,7 +148,7 @@ async function syncTransactions() {
           "value_effect",
           "description",
         ],
-      }
+      },
     );
 
     logInfo(`Synced ${transactions.length} transactions`);
@@ -251,7 +251,7 @@ app.use(
       }
     },
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 
@@ -303,7 +303,7 @@ function validateEnvironment() {
   if (missing.length > 0) {
     logError("Missing or unresolved environment variables:", missing);
     throw new Error(
-      `Missing or unresolved environment variables: ${missing.join(", ")}`
+      `Missing or unresolved environment variables: ${missing.join(", ")}`,
     );
   }
 }
@@ -450,8 +450,8 @@ app.get("/api/trading-data", authenticate, async (req, res) => {
             "DATE",
             sequelize.Sequelize.fn(
               "MAX",
-              sequelize.Sequelize.col("analyzed_at")
-            )
+              sequelize.Sequelize.col("analyzed_at"),
+            ),
           ),
           "max_date",
         ],
@@ -470,9 +470,9 @@ app.get("/api/trading-data", authenticate, async (req, res) => {
           sequelize.Sequelize.where(
             sequelize.Sequelize.fn(
               "DATE",
-              sequelize.Sequelize.col("analyzed_at")
+              sequelize.Sequelize.col("analyzed_at"),
             ),
-            maxDateResult.max_date
+            maxDateResult.max_date,
           ),
         ],
       },
@@ -542,12 +542,12 @@ app.get("/api/positions", authenticate, async (req, res) => {
         positions.map((p) => {
           const optionMatch = p.symbol.match(/^(.+?)\s+(\d{6})([CP])(\d{8})$/);
           return optionMatch ? optionMatch[1].trim() : p.symbol;
-        })
+        }),
       ),
     ];
 
     logInfo(
-      `Fetching Finnhub prices for ${uniqueSymbols.length} unique symbols`
+      `Fetching Finnhub prices for ${uniqueSymbols.length} unique symbols`,
     );
 
     const priceMap = {};
@@ -564,11 +564,11 @@ app.get("/api/positions", authenticate, async (req, res) => {
           } catch (error) {
             logError(
               `Error fetching Finnhub price for ${symbol}:`,
-              error.message
+              error.message,
             ); // Log message only to reduce noise
             priceMap[symbol] = null;
           }
-        })
+        }),
       );
 
       // Increased delay between batches
@@ -580,7 +580,7 @@ app.get("/api/positions", authenticate, async (req, res) => {
     // Add Finnhub prices to positions data
     const positionsWithPrices = positions.map((position) => {
       const optionMatch = position.symbol.match(
-        /^(.+?)\s+(\d{6})([CP])(\d{8})$/
+        /^(.+?)\s+(\d{6})([CP])(\d{8})$/,
       );
       const underlyingSymbol = optionMatch
         ? optionMatch[1].trim()
@@ -616,7 +616,7 @@ app.get("/api/trading-data/refresh", authenticate, async (req, res) => {
     const symbolsToProcess = [...sp500Symbols, ...etfSymbols];
 
     logInfo(
-      `Processing ${symbolsToProcess.length} symbols with session ID: ${sessionId}`
+      `Processing ${symbolsToProcess.length} symbols with session ID: ${sessionId}`,
     );
 
     // Set up Server-Sent Events for progress updates
@@ -782,7 +782,7 @@ if (process.env.NODE_ENV === "production") {
   };
 
   app.use(
-    express.static(path.join(__dirname, "frontend/build"), staticOptions)
+    express.static(path.join(__dirname, "frontend/build"), staticOptions),
   );
 }
 
@@ -836,7 +836,7 @@ async function fetchAggregatedPositions() {
     daysHeld: Math.ceil(
       (new Date(cp.last_transaction_date) -
         new Date(cp.first_transaction_date)) /
-        MILLISECONDS_PER_DAY
+        MILLISECONDS_PER_DAY,
     ),
     totalTransactions: cp.equity_transactions + cp.total_option_transactions,
     // We don't store individual transaction count (length of array) in DB explicitly,
@@ -871,7 +871,7 @@ async function fetchAggregatedPositions() {
     positionsBySymbol[groupingKey] ??= [];
 
     let currentPosition = positionsBySymbol[groupingKey].find(
-      (pos) => pos.isOpen
+      (pos) => pos.isOpen,
     );
 
     if (!currentPosition) {
@@ -947,7 +947,8 @@ async function fetchAggregatedPositions() {
     .flat()
     .filter(
       (position) =>
-        position.transactions.length > 0 && position.totalOptionTransactions > 0
+        position.transactions.length > 0 &&
+        position.totalOptionTransactions > 0,
     );
 
   const newlyClosedPositions = [];
@@ -1019,7 +1020,7 @@ async function fetchAggregatedPositions() {
       position.daysHeld = Math.ceil(
         (new Date(position.lastTransactionDate) -
           new Date(position.firstTransactionDate)) /
-          MILLISECONDS_PER_DAY
+          MILLISECONDS_PER_DAY,
       );
       position.totalTransactions = position.transactions.length;
 
@@ -1045,14 +1046,14 @@ async function fetchAggregatedPositions() {
         const txIds = position.transactions.map((t) => t.transaction_id);
         await TransactionHistory.update(
           { closed_position_id: createdCp.id },
-          { where: { transaction_id: txIds } }
+          { where: { transaction_id: txIds } },
         );
 
         newlyClosedPositions.push(position);
       } catch (err) {
         logError(
           `Failed to archive closed position ${position.symbol}:`,
-          err.message
+          err.message,
         );
         newlyClosedPositions.push(position);
       }
@@ -1068,7 +1069,7 @@ async function fetchAggregatedPositions() {
         openPositions.map((p) => {
           const optionMatch = p.symbol.match(/^(.+?)\s+(\d{6})([CP])(\d{8})$/);
           return optionMatch ? optionMatch[1].trim() : p.symbol;
-        })
+        }),
       ),
     ];
 
@@ -1085,7 +1086,7 @@ async function fetchAggregatedPositions() {
           } catch (error) {
             priceMap[symbol] = null;
           }
-        })
+        }),
       );
       if (i + batchSize < uniqueSymbols.length) {
         await new Promise((resolve) => setTimeout(resolve, 334));
@@ -1093,7 +1094,7 @@ async function fetchAggregatedPositions() {
     }
     openPositions.forEach((position) => {
       const optionMatch = position.symbol.match(
-        /^(.+?)\s+(\d{6})([CP])(\d{8})$/
+        /^(.+?)\s+(\d{6})([CP])(\d{8})$/,
       );
       const underlyingSymbol = optionMatch
         ? optionMatch[1].trim()
@@ -1186,7 +1187,7 @@ async function fetchAggregatedPositions() {
       effectivePrice,
       daysHeld: Math.ceil(
         (new Date() - new Date(position.firstTransactionDate)) /
-          MILLISECONDS_PER_DAY
+          MILLISECONDS_PER_DAY,
       ),
     };
   });
@@ -1198,7 +1199,7 @@ async function fetchAggregatedPositions() {
   ];
   return allPositions.sort(
     (a, b) =>
-      new Date(b.firstTransactionDate) - new Date(a.firstTransactionDate)
+      new Date(b.firstTransactionDate) - new Date(a.firstTransactionDate),
   );
 }
 
@@ -1218,8 +1219,8 @@ app.get("/api/positions/aggregated", authenticate, async (req, res) => {
             returnPercentage: aggregatedPositions[0].returnPercentage,
           },
           null,
-          2
-        )
+          2,
+        ),
       );
     }
 
@@ -1252,7 +1253,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
         p.isOpen &&
         p.optionType === "P" &&
         p.totalShares === 0 &&
-        p.totalOptionContracts > 0
+        p.totalOptionContracts > 0,
     );
 
     const totalAllocation = openCSPs.reduce((sum, p) => {
@@ -1269,8 +1270,8 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
             "DATE",
             sequelize.Sequelize.fn(
               "MAX",
-              sequelize.Sequelize.col("analyzed_at")
-            )
+              sequelize.Sequelize.col("analyzed_at"),
+            ),
           ),
           "max_date",
         ],
@@ -1286,9 +1287,9 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
             sequelize.Sequelize.where(
               sequelize.Sequelize.fn(
                 "DATE",
-                sequelize.Sequelize.col("analyzed_at")
+                sequelize.Sequelize.col("analyzed_at"),
               ),
-              maxDateResult.max_date
+              maxDateResult.max_date,
             ),
           ],
         },
@@ -1402,7 +1403,7 @@ app.get("/api/progress-monitor", authenticate, async (req, res) => {
         `data: ${JSON.stringify({
           type: "no-progress",
           message: "Analysis no longer active",
-        })}\n\n`
+        })}\n\n`,
       );
       res.end();
       return;
@@ -1417,8 +1418,16 @@ app.get("/api/progress-monitor", authenticate, async (req, res) => {
         symbol: currentProgress.symbol,
         message: currentProgress.message,
         sessionId: sessionId,
-      })}\n\n`
+      })}\n\n`,
     );
+
+    if (
+      currentProgress.type === "complete" ||
+      currentProgress.type === "error"
+    ) {
+      res.end();
+      return;
+    }
 
     // Set up polling to check for progress updates
     const checkInterval = setInterval(async () => {
@@ -1431,7 +1440,7 @@ app.get("/api/progress-monitor", authenticate, async (req, res) => {
             `data: ${JSON.stringify({
               type: "complete",
               message: "Analysis completed",
-            })}\n\n`
+            })}\n\n`,
           );
           clearInterval(checkInterval);
           res.end();
@@ -1447,7 +1456,7 @@ app.get("/api/progress-monitor", authenticate, async (req, res) => {
             symbol: updatedProgress.symbol,
             message: updatedProgress.message,
             sessionId: sessionId,
-          })}\n\n`
+          })}\n\n`,
         );
 
         // If progress is complete or error, end monitoring
@@ -1464,7 +1473,7 @@ app.get("/api/progress-monitor", authenticate, async (req, res) => {
           `data: ${JSON.stringify({
             type: "error",
             message: error.message,
-          })}\n\n`
+          })}\n\n`,
         );
         clearInterval(checkInterval);
         res.end();

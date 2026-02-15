@@ -36,12 +36,12 @@ const AnalysisTable = () => {
   const openYahooFinance = useCallback((symbol) => {
     window.open(
       `https://finance.yahoo.com/chart/${symbol}?period1=${Math.floor(
-        (Date.now() - 180 * 24 * 60 * 60 * 1000) / 1000
+        (Date.now() - 180 * 24 * 60 * 60 * 1000) / 1000,
       )}&period2=${Math.floor(
-        Date.now() / 1000
+        Date.now() / 1000,
       )}&interval=1d&includePrePost=true`,
       "_blank",
-      "width=1200,height=800"
+      "width=1200,height=800",
     );
   }, []);
 
@@ -98,10 +98,10 @@ const AnalysisTable = () => {
           Notes: notes,
           "Analyzed At": new Date(analyzed_at).toLocaleString(),
           analyzed_at,
-        })
+        }),
       );
     },
-    [openYahooFinance]
+    [openYahooFinance],
   );
 
   const applyFilters = useCallback(
@@ -127,7 +127,7 @@ const AnalysisTable = () => {
         );
       });
     },
-    [selectedStatuses, selectedDate]
+    [selectedStatuses, selectedDate],
   ); // Fetch initial data
   useEffect(() => {
     let mounted = true;
@@ -207,7 +207,7 @@ const AnalysisTable = () => {
             }/api/progress-monitor?sessionId=${data.sessionId}&token=${token}`,
             {
               withCredentials: true,
-            }
+            },
           );
 
           monitorEventSource.onmessage = (event) => {
@@ -221,6 +221,19 @@ const AnalysisTable = () => {
                   symbol: progressData.symbol,
                   message: progressData.message,
                 });
+                if (
+                  progressData.total > 0 &&
+                  progressData.current >= progressData.total
+                ) {
+                  setProgressInfo(null);
+                  setRefreshing(false);
+                  monitorEventSource.close();
+                  client.get("/api/trading-data").then(({ data }) => {
+                    if (Array.isArray(data)) {
+                      setRawData(transformData(data));
+                    }
+                  });
+                }
                 break;
               case "complete":
                 setProgressInfo(null);
@@ -302,7 +315,7 @@ const AnalysisTable = () => {
         }/api/trading-data/refresh?token=${token}`,
         {
           withCredentials: true,
-        }
+        },
       );
 
       eventSource.onmessage = (event) => {
@@ -324,19 +337,33 @@ const AnalysisTable = () => {
               symbol: data.symbol,
               message: data.message,
             });
+            if (data.total > 0 && data.current >= data.total) {
+              setProgressInfo(null);
+              setRefreshing(false);
+              eventSource.close();
+              client.get("/api/trading-data").then(({ data: tableData }) => {
+                if (Array.isArray(tableData)) {
+                  setRawData(transformData(tableData));
+                }
+              });
+            }
             break;
           case "complete":
             setProgressInfo(null);
+            setRefreshing(false);
+            eventSource.close();
             // Fetch updated data
-            client.get("/api/trading-data").then(({ data }) => {
-              if (Array.isArray(data)) {
-                setRawData(transformData(data));
+            client.get("/api/trading-data").then(({ data: tableData }) => {
+              if (Array.isArray(tableData)) {
+                setRawData(transformData(tableData));
               }
             });
             break;
           case "error":
             setError("Failed to refresh analysis data: " + data.message);
             setProgressInfo(null);
+            setRefreshing(false);
+            eventSource.close();
             break;
           default:
             console.log("Unknown SSE message type:", data.type);
@@ -381,7 +408,7 @@ const AnalysisTable = () => {
       "Status",
       "Analyzed At",
     ],
-    []
+    [],
   );
 
   if (loading) {
