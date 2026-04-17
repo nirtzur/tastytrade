@@ -1346,6 +1346,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       ).toFixed(2)}.
       - Provide the ENTIRE response as valid HTML.
       - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %.
+      - In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href="https://finance.yahoo.com/quote/SYMBOL" target="_blank">SYMBOL</a>.
       - Include the brief reasoning for the selection as HTML paragraphs or lists below the table.
       - Do not use Markdown.
     `;
