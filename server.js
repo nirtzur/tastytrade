@@ -1298,14 +1298,17 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       });
     }
 
-    // Filter analysis: days to earnings >= 8 or days to earnings < 0 (past earnings)
+    // Filter analysis: days to earnings: 8 <= days <= 70 or days to earnings < 0 (past earnings)
     const filteredAnalysis = analysisResults.filter((a) => {
       if (a.days_to_earnings !== null && a.days_to_earnings !== undefined) {
-        // Keep if earnings are far enough in future (>= 8 days) OR in the past (< 0 days)
-        // Filter out if earnings are coming up soon (0 <= days < 8)
-        return a.days_to_earnings >= 8 || a.days_to_earnings < 0;
+        // Keep if earnings are far enough in future (>= 8 days and <= 70 days) OR in the past (< 0 days)
+        // Filter out if earnings are coming up soon (0 <= days < 8) or way too far (> 70 days)
+        return (
+          (a.days_to_earnings >= 8 && a.days_to_earnings <= 70) ||
+          a.days_to_earnings < 0
+        );
       }
-      return true; // Keep if unknown
+      return false; // Exclude if unknown (N/A)
     });
 
     // 3. Consult Gemini
@@ -1322,7 +1325,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
 
       Available Analysis (Top Candidates):
       ${filteredAnalysis
-        .slice(0, 20)
+        .slice(0, 50)
         .map((a) => {
           const earningsInfo =
             a.days_to_earnings < 0
