@@ -14,6 +14,7 @@ const {
   getAccountHistory,
   getPositions,
   logout,
+  getAccountBalance,
 } = require("./Analyze/tastytrade");
 const {
   processSymbols,
@@ -1256,10 +1257,9 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
         p.totalOptionContracts > 0,
     );
 
-    const totalAllocation = openCSPs.reduce((sum, p) => {
-      // Allocation = contracts * 100 * strike
-      return sum + p.totalOptionContracts * 100 * p.strikePrice;
-    }, 0);
+    const accountBalance = await getAccountBalance();
+    const netLiquidity =
+      parseFloat(accountBalance["net-liquidating-value"]) || 0;
 
     // 2. Fetch latest analysis
     // Get the maximum analyzed_at date
@@ -1318,7 +1318,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       I need your help to allocate my portfolio for Cash Secured Puts.
       
       Current Status:
-      - Total Allocated Capital in CSPs: $${totalAllocation.toFixed(2)}
+      - Current Net Liquidity: $${netLiquidity.toFixed(2)}
       - Current Open CSP Positions: ${openCSPs
         .map((p) => `${p.symbol} ($${p.strikePrice} Strike)`)
         .join(", ")}
@@ -1341,9 +1341,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %'.
       - You may recommend symbols I already have open positions for.
-      - The total sum of all recommended allocations must not exceed $${(
-        totalAllocation + 15000
-      ).toFixed(2)}.
+      - The total sum of all recommended allocations must not exceed $${netLiquidity.toFixed(2)}.
       - Provide the ENTIRE response as valid HTML.
       - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %.
       - In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href="https://finance.yahoo.com/quote/SYMBOL" target="_blank">SYMBOL</a>.

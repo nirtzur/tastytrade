@@ -470,6 +470,33 @@ async function getPositions() {
   }
 }
 
+async function getAccountBalance() {
+  try {
+    if (!isLoggedIn()) {
+      await initializeTastytrade();
+    }
+    const client = getClient();
+    const response = await client.httpClient.getData(
+      `/accounts/${process.env.TASTYTRADE_ACCOUNT_NUMBER}/balances`,
+    );
+
+    let data = response.data || response;
+    if (data && data.data) {
+      data = data.data;
+    }
+    if (!data) throw new Error("No account balance data received");
+
+    return data;
+  } catch (error) {
+    handleApiError(error);
+    console.error(
+      "Account balance error details:",
+      error.response?.data || error.message,
+    );
+    throw new Error(`Failed to fetch account balance: ${error.message}`);
+  }
+}
+
 async function logout() {
   try {
     const client = getClient();
@@ -492,4 +519,5 @@ module.exports = {
   getPositions,
   logout,
   isLoggedIn,
+  getAccountBalance,
 };

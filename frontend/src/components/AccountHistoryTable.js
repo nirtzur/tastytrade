@@ -46,7 +46,7 @@ const AccountHistoryTable = () => {
       // Fetch both sets of data in parallel
       const [historyData, positionsData] = await Promise.all([
         client.get(
-          `/api/account-history?start-date=${startIso}&end-date=${endIso}`
+          `/api/account-history?start-date=${startIso}&end-date=${endIso}`,
         ),
         client.get("/api/positions"),
       ]);
@@ -73,7 +73,7 @@ const AccountHistoryTable = () => {
             Price: price,
             Value: valueEffect === "Debit" ? -value : value,
             Description: description,
-          })
+          }),
         );
         setHistory(transformedData);
       }
@@ -99,7 +99,7 @@ const AccountHistoryTable = () => {
             // Use the minimum between currentPrice and optionPrice for value calculation
             const priceForValue = Math.min(
               currentPrice,
-              optionPrice || Infinity
+              optionPrice || Infinity,
             );
             const value = quantity * priceForValue;
             // P/L is the difference between current value and acquisition cost
@@ -119,7 +119,7 @@ const AccountHistoryTable = () => {
               Value: `$${value.toFixed(2)}`,
               "P/L": `$${profitLoss.toFixed(2)}`,
             };
-          }
+          },
         );
         setPositions(processedPositions);
         const totalValue = processedPositions.reduce((sum, position) => {
@@ -172,7 +172,7 @@ const AccountHistoryTable = () => {
 
   const historyTotal = displayedHistory.reduce(
     (sum, item) => sum + (Number(item.Value) || 0),
-    0
+    0,
   );
 
   const totalValue = historyTotal + positionsTotalValue;
