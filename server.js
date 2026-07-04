@@ -1353,7 +1353,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       return res.json({ prompt });
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     let result;
     if (req.body.messages) {
