@@ -1311,6 +1311,8 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       return false; // Exclude if unknown (N/A)
     });
 
+    const maxAllocationPerSymbol = netLiquidity * 0.15;
+
     // 3. Consult Gemini
     const genAI = new GoogleGenerativeAI(token);
 
@@ -1337,7 +1339,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
 
       Task:
       Recommend a list of new allocations.
-      - Each allocation should be between $20,000 and $40,000.
+      - Each allocation (for a single symbol) must not exceed 15% of my Net Liquidity, which equals $${maxAllocationPerSymbol.toFixed(2)}.
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %'.
       - You may recommend symbols I already have open positions for.
