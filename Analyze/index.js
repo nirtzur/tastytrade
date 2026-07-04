@@ -22,7 +22,8 @@ const AnalysisResult = require("../models/AnalysisResult");
 
 // Trading parameters from environment variables
 const MIN_STOCK_PRICE = parseFloat(process.env.MIN_STOCK_PRICE) || 30;
-const MAX_STOCK_SPREAD = parseFloat(process.env.MAX_STOCK_SPREAD) || 15;
+const MAX_STOCK_SPREAD_PCT =
+  parseFloat(process.env.MAX_STOCK_SPREAD_PCT) || 0.01;
 const MIN_MID_PERCENT = parseFloat(process.env.MIN_MID_PERCENT) || 3;
 const DAYS_TO_EXPIRATION = parseInt(process.env.DAYS_TO_EXPIRATION) || 10;
 
@@ -147,27 +148,60 @@ async function fetchSymbolData(symbol, preFetchedQuote = null) {
     // First get the quote data
     const quote = preFetchedQuote || (await getQuote(symbol));
 
-    // Calculate stock spread
+    // Calculate stock spread and price
     const stockBid = parseFloat(quote?.bid) || null;
     const stockAsk = parseFloat(quote?.ask) || null;
-    const stockSpread = stockAsk - stockBid;
+    const stockSpread =
+      stockAsk !== null && stockBid !== null ? stockAsk - stockBid : null;
+    const stockPrice =
+      parseFloat(quote?.last) ||
+      (stockBid !== null && stockAsk !== null
+        ? (stockBid + stockAsk) / 2
+        : null);
 
     // Validate stock spread before proceeding
-    if (stockSpread > MAX_STOCK_SPREAD) {
-      if (isDebug) {
-        console.log(
-          chalk.gray(
-            `Skipping ${symbol}: Stock spread $${stockSpread.toFixed(
-              2,
-            )} exceeds maximum of $${MAX_STOCK_SPREAD}`,
-          ),
-        );
+    if (stockSpread !== null && stockPrice !== null) {
+      const maxSpreadAllowed = stockPrice * MAX_STOCK_SPREAD_PCT;
+      if (stockSpread > maxSpreadAllowed) {
+        if (isDebug) {
+          console.log(
+            chalk.gray(
+              `Skipping ${symbol}: Stock spread $${stockSpread.toFixed(
+                2,
+              )} exceeds maximum of 1% of stock price ($${maxSpreadAllowed.toFixed(2)})`,
+            ),
+          );
+        }
+        return null;
       }
-      return null;
     }
 
     // Then use the quote data to get the option chain
     const options = await getNextOption(symbol, quote);
+
+    // Validate option bid-ask spread: Exclude options where the bid-ask spread is wider than 15% of the premium
+    if (options) {
+      const optionBid = parseFloat(options.bid) || 0;
+      const optionAsk = parseFloat(options.ask) || null;
+      const optionMid = (optionBid + optionAsk) / 2;
+
+      if (optionMid > 0 && optionAsk !== null) {
+        const optionSpread = optionAsk - optionBid;
+        const optionSpreadPct = optionSpread / optionMid;
+        if (optionSpreadPct > 0.15) {
+          if (isDebug) {
+            console.log(
+              chalk.gray(
+                `Skipping ${symbol}: Option bid-ask spread ($${optionSpread.toFixed(
+                  2,
+                )}) is ${(optionSpreadPct * 100).toFixed(1)}% of option premium, exceeding maximum of 15%`,
+              ),
+            );
+          }
+          return null;
+        }
+      }
+    }
 
     return {
       symbol,
@@ -481,7 +515,11 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
         // Determine final status
         if (currentPrice && currentPrice < MIN_STOCK_PRICE) {
           analysisResult.status = "LOW_STOCK_PRICE";
-        } else if (stockSpread && stockSpread > MAX_STOCK_SPREAD) {
+        } else if (
+          stockSpread &&
+          currentPrice &&
+          stockSpread > currentPrice * MAX_STOCK_SPREAD_PCT
+        ) {
           analysisResult.status = "HIGH_SPREAD";
         } else if (optionMidPercent && optionMidPercent < MIN_MID_PERCENT) {
           analysisResult.status = "LOW_MID_PERCENT";
@@ -490,7 +528,7 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
           stockSpread &&
           optionMidPercent &&
           currentPrice >= MIN_STOCK_PRICE &&
-          stockSpread <= MAX_STOCK_SPREAD &&
+          stockSpread <= currentPrice * MAX_STOCK_SPREAD_PCT &&
           optionMidPercent >= MIN_MID_PERCENT
         ) {
           analysisResult.status = "READY";
