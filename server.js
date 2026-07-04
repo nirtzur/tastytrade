@@ -1299,8 +1299,25 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
     }
 
     // Filter analysis: days to earnings: 8 <= days <= 70 or days to earnings < 0 (past earnings)
+    // AND the option contract must expire at least 2 days prior to the earnings release (if earnings are in the future)
     const filteredAnalysis = analysisResults.filter((a) => {
       if (a.days_to_earnings !== null && a.days_to_earnings !== undefined) {
+        // If earnings are in the future, check if the option contract expires at least 2 days prior
+        if (a.days_to_earnings >= 0) {
+          if (!a.option_expiration_date) return false;
+          const expDate = new Date(a.option_expiration_date);
+          const analyzedDate = new Date(a.analyzed_at);
+          expDate.setHours(0, 0, 0, 0);
+          analyzedDate.setHours(0, 0, 0, 0);
+          const daysToExpiration = Math.round(
+            (expDate - analyzedDate) / (1000 * 60 * 60 * 24),
+          );
+
+          if (a.days_to_earnings - daysToExpiration < 2) {
+            return false; // Exclude if option expires less than 2 days before earnings (or after earnings)
+          }
+        }
+
         // Keep if earnings are far enough in future (>= 8 days and <= 70 days) OR in the past (< 0 days)
         // Filter out if earnings are coming up soon (0 <= days < 8) or way too far (> 70 days)
         return (
@@ -1333,7 +1350,10 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
             a.days_to_earnings < 0
               ? `Last earnings ${Math.abs(a.days_to_earnings)} days ago`
               : `Earnings in ${a.days_to_earnings} days`;
-          return `- ${a.symbol}: Price $${a.current_price}, Strike $${a.option_strike_price}, Mid % ${a.option_mid_percent}%, ${earningsInfo}`;
+          const expDateStr = a.option_expiration_date
+            ? new Date(a.option_expiration_date).toISOString().split("T")[0]
+            : "N/A";
+          return `- ${a.symbol}: Price $${a.current_price}, Strike $${a.option_strike_price}, Mid % ${a.option_mid_percent}%, Expiration ${expDateStr}, ${earningsInfo}`;
         })
         .join("\n")}
 
@@ -1343,6 +1363,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %'.
       - You may recommend symbols I already have open positions for.
+      - Ensure that any recommended option contract expires at least 2 days prior to the earnings release (to avoid binary gap-down risk).
       - The total sum of all recommended allocations must not exceed $${netLiquidity.toFixed(2)}.
       - Provide the ENTIRE response as valid HTML.
       - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %.
