@@ -35,7 +35,7 @@ const DataTable = ({ columns, data }) => {
         const s = String(val).trim();
         // Check if it's a percentage or currency format
         if (s.startsWith("$")) {
-          const num = parseFloat(s.replace(/[\$,]/g, ""));
+          const num = parseFloat(s.replace(/[$,]/g, ""));
           return isNaN(num) ? s : num;
         }
         if (s.endsWith("%")) {
