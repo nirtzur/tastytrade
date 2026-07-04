@@ -13,6 +13,7 @@ const {
   getQuotes,
   getNextOption,
   getAccountHistory,
+  getMarketMetrics,
 } = require("./tastytrade");
 const { getSP500Symbols } = require("./sp500");
 const { getSectorETFs } = require("./etfs");
@@ -64,7 +65,7 @@ async function getDaysToEarnings(symbol) {
             } else {
               resolve(data);
             }
-          }
+          },
         );
       });
 
@@ -78,12 +79,12 @@ async function getDaysToEarnings(symbol) {
 
       // Sort by date
       const sortedEarnings = earnings.earningsCalendar.sort(
-        (a, b) => new Date(a.date) - new Date(b.date)
+        (a, b) => new Date(a.date) - new Date(b.date),
       );
 
       // 1. Look for future earnings
       const nextEarnings = sortedEarnings.find(
-        (e) => new Date(e.date) >= today
+        (e) => new Date(e.date) >= today,
       );
 
       if (nextEarnings) {
@@ -114,7 +115,7 @@ async function getDaysToEarnings(symbol) {
           console.log(
             `Rate limit hit for ${symbol}, retrying in ${delay}ms (Attempt ${
               retries + 1
-            }/${maxRetries})`
+            }/${maxRetries})`,
           );
         }
         await sleep(delay);
@@ -124,7 +125,7 @@ async function getDaysToEarnings(symbol) {
       if (isDebug) {
         console.error(
           `Failed to get earnings date for ${symbol}:`,
-          error.message
+          error.message,
         );
       }
       return null;
@@ -157,9 +158,9 @@ async function fetchSymbolData(symbol, preFetchedQuote = null) {
         console.log(
           chalk.gray(
             `Skipping ${symbol}: Stock spread $${stockSpread.toFixed(
-              2
-            )} exceeds maximum of $${MAX_STOCK_SPREAD}`
-          )
+              2,
+            )} exceeds maximum of $${MAX_STOCK_SPREAD}`,
+          ),
         );
       }
       return null;
@@ -176,11 +177,46 @@ async function fetchSymbolData(symbol, preFetchedQuote = null) {
   } catch (error) {
     if (isDebug) {
       console.error(
-        chalk.yellow(`Failed to fetch data for ${symbol}:`, error.message)
+        chalk.yellow(`Failed to fetch data for ${symbol}:`, error.message),
       );
     }
     return null;
   }
+}
+
+async function fetchIVRMap(symbols) {
+  const ivrMap = new Map();
+  try {
+    const chunks = [];
+    for (let i = 0; i < symbols.length; i += 50) {
+      chunks.push(symbols.slice(i, i + 50));
+    }
+
+    for (const chunk of chunks) {
+      try {
+        const metrics = await getMarketMetrics(chunk);
+        if (metrics && metrics.items) {
+          metrics.items.forEach((item) => {
+            if (
+              item.symbol &&
+              item["implied-volatility-index-rank"] !== undefined &&
+              item["implied-volatility-index-rank"] !== null
+            ) {
+              ivrMap.set(
+                item.symbol,
+                parseFloat(item["implied-volatility-index-rank"]) * 100,
+              );
+            }
+          });
+        }
+      } catch (chunkError) {
+        console.error("Error fetching IVR chunk:", chunkError.message);
+      }
+    }
+  } catch (e) {
+    console.error("Error in fetchIVRMap:", e.message);
+  }
+  return ivrMap;
 }
 
 async function storeAnalysisResult(result) {
@@ -198,6 +234,7 @@ async function storeAnalysisResult(result) {
       option_mid_percent: result.option_mid_percent,
       option_expiration_date: result.option_expiration_date,
       days_to_earnings: result.days_to_earnings,
+      ivr: result.ivr,
       status: result.status,
       notes: result.notes.join("; "),
     });
@@ -212,6 +249,8 @@ async function processSymbols(symbols) {
   const today = new Date();
   const expirationDate = new Date();
   expirationDate.setDate(today.getDate() + DAYS_TO_EXPIRATION);
+
+  const ivrMap = await fetchIVRMap(symbols);
 
   for (const symbol of symbols) {
     const data = await fetchSymbolData(symbol);
@@ -246,6 +285,7 @@ async function processSymbols(symbols) {
         option_mid_price: optionMidPrice,
         option_mid_percent: optionMidPercent,
         option_expiration_date: optionExpirationDate,
+        ivr: ivrMap.get(symbol) || null,
         status: null,
         notes: [],
         days_to_earnings: null,
@@ -261,16 +301,16 @@ async function processSymbols(symbols) {
             analysisResult.status = "HIGH_MID_PERCENT";
             analysisResult.notes.push(
               `Mid price ${optionMidPercent.toFixed(
-                2
-              )}% of strike exceeds minimum ${MIN_MID_PERCENT}%`
+                2,
+              )}% of strike exceeds minimum ${MIN_MID_PERCENT}%`,
             );
           } else {
             analysisResult.status = "LOW_MID_PERCENT";
             if (optionMidPercent) {
               analysisResult.notes.push(
                 `Mid price ${optionMidPercent.toFixed(
-                  2
-                )}% of strike below minimum ${MIN_MID_PERCENT}%`
+                  2,
+                )}% of strike below minimum ${MIN_MID_PERCENT}%`,
               );
             }
           }
@@ -281,7 +321,7 @@ async function processSymbols(symbols) {
       } else {
         analysisResult.status = "LOW_STOCK_PRICE";
         analysisResult.notes.push(
-          `Stock price $${currentPrice} below minimum $${MIN_STOCK_PRICE}`
+          `Stock price $${currentPrice} below minimum $${MIN_STOCK_PRICE}`,
         );
       }
 
@@ -301,7 +341,7 @@ async function processSymbols(symbols) {
         if (isDebug) {
           console.error(
             `Error fetching days to earnings for ${symbol}:`,
-            e.message
+            e.message,
           );
         }
       }
@@ -321,11 +361,11 @@ async function processSymbols(symbols) {
         optionExpirationDate <= expirationDate
       ) {
         const output = `${symbol}: Price: $${currentPrice?.toFixed(
-          2
+          2,
         )} | Strike: $${strikePrice?.toFixed(
-          2
+          2,
         )} | Mid: $${optionMidPrice?.toFixed(2)} (${optionMidPercent?.toFixed(
-          2
+          2,
         )}% of strike) | Exp: ${
           optionExpirationDate?.toISOString().split("T")[0]
         }`;
@@ -357,7 +397,7 @@ async function main() {
     if (symbols.length > 0) {
       symbolsToProcess = symbols;
       console.log(
-        chalk.green(`Using provided symbols: ${symbolsToProcess.join(", ")}`)
+        chalk.green(`Using provided symbols: ${symbolsToProcess.join(", ")}`),
       );
     } else {
       const sp500Symbols = await getSP500Symbols();
@@ -365,8 +405,8 @@ async function main() {
       symbolsToProcess = [...sp500Symbols, ...etfSymbols];
       console.log(
         chalk.green(
-          `Using S&P 500 symbols (${sp500Symbols.length} total) and ${etfSymbols.length} sector ETFs...`
-        )
+          `Using S&P 500 symbols (${sp500Symbols.length} total) and ${etfSymbols.length} sector ETFs...`,
+        ),
       );
     }
 
@@ -393,6 +433,8 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
   const expirationDate = new Date();
   expirationDate.setDate(today.getDate() + DAYS_TO_EXPIRATION);
   let processedCount = 0;
+
+  const ivrMap = await fetchIVRMap(symbols);
 
   const processSymbol = async (symbol, preFetchedQuote = null) => {
     let analysisResult;
@@ -431,6 +473,7 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
           option_mid_percent: optionMidPercent,
           option_expiration_date: optionExpirationDate,
           days_to_earnings: daysToEarnings,
+          ivr: ivrMap.get(symbol) || null,
           analyzed_at: today,
           status: "ANALYZING", // Default status
         };
@@ -498,7 +541,7 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
     } catch (e) {
       console.error(
         `Error fetching quotes for chunk starting with ${chunk[0]}:`,
-        e.message
+        e.message,
       );
     }
 

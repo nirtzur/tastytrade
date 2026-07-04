@@ -47,6 +47,10 @@ AnalysisResult.init(
     days_to_earnings: {
       type: DataTypes.INTEGER,
     },
+    ivr: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+    },
     status: {
       type: DataTypes.STRING,
     },
@@ -63,7 +67,7 @@ AnalysisResult.init(
     modelName: "AnalysisResult",
     tableName: "analysis_results",
     timestamps: false,
-  }
+  },
 );
 
 module.exports = AnalysisResult;

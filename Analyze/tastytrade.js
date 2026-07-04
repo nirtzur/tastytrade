@@ -497,6 +497,32 @@ async function getAccountBalance() {
   }
 }
 
+async function getMarketMetrics(symbols) {
+  try {
+    if (!isLoggedIn()) {
+      await initializeTastytrade();
+    }
+    const client = getClient();
+    const symbolList = Array.isArray(symbols) ? symbols.join(",") : symbols;
+    const response = await client.httpClient.getData(
+      `/market-metrics?symbols=${symbolList}`,
+    );
+
+    let data = response.data || response;
+    if (data && data.data) {
+      data = data.data;
+    }
+    return data;
+  } catch (error) {
+    handleApiError(error);
+    console.error(
+      "Market metrics error details:",
+      error.response?.data || error.message,
+    );
+    throw new Error(`Failed to fetch market metrics: ${error.message}`);
+  }
+}
+
 async function logout() {
   try {
     const client = getClient();
@@ -520,4 +546,5 @@ module.exports = {
   logout,
   isLoggedIn,
   getAccountBalance,
+  getMarketMetrics,
 };

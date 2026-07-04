@@ -1353,7 +1353,11 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
           const expDateStr = a.option_expiration_date
             ? new Date(a.option_expiration_date).toISOString().split("T")[0]
             : "N/A";
-          return `- ${a.symbol}: Price $${a.current_price}, Strike $${a.option_strike_price}, Mid % ${a.option_mid_percent}%, Expiration ${expDateStr}, ${earningsInfo}`;
+          const ivrStr =
+            a.ivr !== null && a.ivr !== undefined
+              ? `${Number(a.ivr).toFixed(2)}`
+              : "N/A";
+          return `- ${a.symbol}: Price $${a.current_price}, Strike $${a.option_strike_price}, Mid % ${a.option_mid_percent}%, IVR ${ivrStr}, Expiration ${expDateStr}, ${earningsInfo}`;
         })
         .join("\n")}
 
@@ -1361,12 +1365,12 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       Recommend a list of new allocations.
       - Each allocation (for a single symbol) must not exceed 15% of my Net Liquidity, which equals $${maxAllocationPerSymbol.toFixed(2)}.
       - Allocation amount = Number of contracts * 100 * Strike Price.
-      - Prioritize symbols with the highest 'Mid %'.
+      - Prioritize symbols with the highest 'Mid %' and highest 'IVR' (Implied Volatility Rank).
       - You may recommend symbols I already have open positions for.
       - Ensure that any recommended option contract expires at least 2 days prior to the earnings release (to avoid binary gap-down risk).
       - The total sum of all recommended allocations must not exceed $${netLiquidity.toFixed(2)}.
       - Provide the ENTIRE response as valid HTML.
-      - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %.
+      - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %, IVR.
       - In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href="https://finance.yahoo.com/quote/SYMBOL" target="_blank">SYMBOL</a>.
       - Include the brief reasoning for the selection as HTML paragraphs or lists below the table.
       - Do not use Markdown.

@@ -55,6 +55,7 @@ const AnalysisTable = () => {
           option_strike_price,
           option_mid_price,
           option_mid_percent,
+          ivr,
           option_expiration_date,
           days_to_earnings,
           status,
@@ -89,6 +90,10 @@ const AnalysisTable = () => {
           "Mid %":
             option_mid_percent !== null && option_mid_percent !== undefined
               ? `${Number(option_mid_percent).toFixed(4)}%`
+              : "N/A",
+          IVR:
+            ivr !== null && ivr !== undefined
+              ? `${Number(ivr).toFixed(2)}`
               : "N/A",
           Expiration: option_expiration_date
             ? new Date(option_expiration_date).toLocaleDateString()
@@ -403,6 +408,7 @@ const AnalysisTable = () => {
       "Strike Price",
       "Option Mid",
       "Mid %",
+      "IVR",
       "Expiration",
       "Days to Earnings",
       "Status",
