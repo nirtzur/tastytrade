@@ -42,7 +42,7 @@ const AIPage = () => {
         savedPrompt: prompt,
         savedResponse: response,
         savedChatHistory: chatHistory,
-      })
+      }),
     );
   }, [prompt, response, chatHistory]);
 
@@ -116,11 +116,11 @@ const AIPage = () => {
         messages: newHistory,
       });
 
-      const analysis = result.data.analysis;
-      setResponse(analysis); // Update the main display
+      const newAnalysis = result.data.analysis;
+      setResponse(newAnalysis); // Update the main display
       setChatHistory([
         ...newHistory,
-        { role: "model", parts: [{ text: analysis }] },
+        { role: "model", parts: [{ text: newAnalysis }] },
       ]);
       setFollowUp("");
     } catch (err) {

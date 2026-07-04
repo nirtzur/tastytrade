@@ -3,7 +3,7 @@ require("dotenv").config();
 const cors = require("cors");
 const path = require("path");
 const finnhub = require("finnhub");
-const { GoogleGenAI } = require("@google/genai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // Configure Finnhub
 const finnhubClient = new finnhub.DefaultApi();
@@ -1312,7 +1312,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
     });
 
     // 3. Consult Gemini
-    const genAI = new GoogleGenAI({ apiKey: token });
+    const genAI = new GoogleGenerativeAI(token);
 
     const prompt = `
       I need your help to allocate my portfolio for Cash Secured Puts.
@@ -1353,23 +1353,27 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       return res.json({ prompt });
     }
 
-    let contents;
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    let result;
     if (req.body.messages) {
-      contents = req.body.messages;
+      // This is a follow-up message in a conversation
+      const history = req.body.messages.slice(0, -1); // All but the last message
+      const lastMessage = req.body.messages[req.body.messages.length - 1];
+
+      const chat = model.startChat({ history });
+      result = await chat.sendMessage(lastMessage.parts[0].text);
     } else if (req.body.customPrompt) {
-      contents = [{ role: "user", parts: [{ text: req.body.customPrompt }] }];
+      // This is the first message, using a custom prompt
+      result = await model.generateContent(req.body.customPrompt);
     } else {
-      contents = [{ role: "user", parts: [{ text: prompt }] }];
+      // This is the first message, using the default generated prompt
+      result = await model.generateContent(prompt);
     }
 
-    const result = await genAI.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: contents,
-    });
-
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-    res.json({ analysis: text });
+    const response = await result.response;
+    const text = response.text();
+    res.json({ analysis: text, history: req.body.messages });
   } catch (error) {
     logError("Error in AI consult:", error);
     res.status(500).json({
