@@ -158,6 +158,8 @@ const symbols = args
   .map((symbol) => symbol.toUpperCase());
 
 async function fetchSymbolData(symbol, preFetchedQuote = null) {
+  const warnings = [];
+
   try {
     // First get the quote data
     const quote = preFetchedQuote || (await getQuote(symbol));
@@ -173,46 +175,62 @@ async function fetchSymbolData(symbol, preFetchedQuote = null) {
         ? (stockBid + stockAsk) / 2
         : null);
 
-    // Validate stock spread before proceeding
+    // Validate stock spread but do not drop the symbol entirely
     if (stockSpread !== null && stockPrice !== null) {
       const maxSpreadAllowed = resolveMaxStockSpread(stockPrice);
       if (stockSpread > maxSpreadAllowed) {
+        warnings.push(
+          `Stock spread $${stockSpread.toFixed(2)} exceeds maximum $${maxSpreadAllowed.toFixed(2)}`,
+        );
         if (isDebug) {
           console.log(
             chalk.gray(
-              `Skipping ${symbol}: Stock spread $${stockSpread.toFixed(
+              `${symbol}: stock spread $${stockSpread.toFixed(
                 2,
-              )} exceeds maximum of 1% of stock price ($${maxSpreadAllowed.toFixed(2)})`,
+              )} exceeds max $${maxSpreadAllowed.toFixed(2)}`,
             ),
           );
         }
-        return null;
       }
     }
 
-    // Then use the quote data to get the option chain
-    const options = await getNextOption(symbol, quote);
+    let options = null;
+    try {
+      options = await getNextOption(symbol, quote);
+    } catch (error) {
+      warnings.push(`No valid option chain data available: ${error.message}`);
+      if (isDebug) {
+        console.warn(
+          chalk.yellow(`${symbol}: unable to fetch a valid option chain`),
+        );
+      }
+    }
 
-    // Validate option bid-ask spread: Exclude options where the bid-ask spread is wider than 15% of the premium
+    // Validate option bid-ask spread but keep the symbol in the analysis set
     if (options) {
-      const optionBid = parseFloat(options.bid) || 0;
+      const optionBid = parseFloat(options.bid) || null;
       const optionAsk = parseFloat(options.ask) || null;
-      const optionMid = (optionBid + optionAsk) / 2;
+      const optionMid =
+        optionBid !== null && optionAsk !== null
+          ? (optionBid + optionAsk) / 2
+          : null;
 
       if (optionMid > 0 && optionAsk !== null) {
         const optionSpread = optionAsk - optionBid;
         const optionSpreadPct = optionSpread / optionMid;
         if (optionSpreadPct > 0.15) {
+          warnings.push(
+            `Option bid-ask spread is ${(optionSpreadPct * 100).toFixed(1)}% of premium`,
+          );
           if (isDebug) {
             console.log(
               chalk.gray(
-                `Skipping ${symbol}: Option bid-ask spread ($${optionSpread.toFixed(
-                  2,
-                )}) is ${(optionSpreadPct * 100).toFixed(1)}% of option premium, exceeding maximum of 15%`,
+                `${symbol}: option spread ${(optionSpreadPct * 100).toFixed(
+                  1,
+                )}% exceeds max 15%`,
               ),
             );
           }
-          return null;
         }
       }
     }
@@ -221,6 +239,7 @@ async function fetchSymbolData(symbol, preFetchedQuote = null) {
       symbol,
       quote,
       options,
+      warnings,
     };
   } catch (error) {
     if (isDebug) {
@@ -228,7 +247,12 @@ async function fetchSymbolData(symbol, preFetchedQuote = null) {
         chalk.yellow(`Failed to fetch data for ${symbol}:`, error.message),
       );
     }
-    return null;
+    return {
+      symbol,
+      quote: null,
+      options: null,
+      warnings: [error.message],
+    };
   }
 }
 
@@ -267,6 +291,83 @@ async function fetchIVRMap(symbols) {
   return ivrMap;
 }
 
+function buildAnalysisResult({
+  symbol,
+  data,
+  analyzedAt = new Date(),
+  expirationWindowDate = new Date(),
+  ivrMap = new Map(),
+  daysToEarnings = null,
+}) {
+  const currentPrice = parseFloat(data?.quote?.last) || null;
+  const stockBid = parseFloat(data?.quote?.bid) || null;
+  const stockAsk = parseFloat(data?.quote?.ask) || null;
+  const stockSpread = stockAsk && stockBid ? stockAsk - stockBid : null;
+  const strikePrice = parseFloat(data?.options?.strike_price) || null;
+  const optionBid = parseFloat(data?.options?.bid) || null;
+  const optionAsk = parseFloat(data?.options?.ask) || null;
+  const optionMidPrice =
+    optionBid !== null && optionAsk !== null
+      ? (optionBid + optionAsk) / 2
+      : null;
+  const optionMidPercent =
+    strikePrice && optionMidPrice ? (optionMidPrice / strikePrice) * 100 : null;
+  const optionExpirationDate = data?.options?.["expiration-date"]
+    ? new Date(data.options["expiration-date"])
+    : null;
+
+  const analysisResult = {
+    symbol,
+    current_price: currentPrice,
+    stock_bid: stockBid,
+    stock_ask: stockAsk,
+    stock_spread: stockSpread,
+    option_strike_price: strikePrice,
+    option_bid: optionBid,
+    option_ask: optionAsk,
+    option_mid_price: optionMidPrice,
+    option_mid_percent: optionMidPercent,
+    option_expiration_date: optionExpirationDate,
+    ivr: ivrMap.get(symbol) || null,
+    status: null,
+    notes: [...(data?.warnings || [])],
+    days_to_earnings: daysToEarnings,
+    analyzed_at: analyzedAt,
+  };
+
+  if (!data?.options) {
+    analysisResult.notes.push("No valid option chain data available");
+  }
+
+  if (currentPrice && currentPrice > MIN_STOCK_PRICE) {
+    if (optionExpirationDate && optionExpirationDate <= expirationWindowDate) {
+      if (optionMidPercent && parseFloat(optionMidPercent) > MIN_MID_PERCENT) {
+        analysisResult.status = "HIGH_MID_PERCENT";
+        analysisResult.notes.push(
+          `Mid price ${optionMidPercent.toFixed(2)}% of strike exceeds minimum ${MIN_MID_PERCENT}%`,
+        );
+      } else {
+        analysisResult.status = "LOW_MID_PERCENT";
+        if (optionMidPercent) {
+          analysisResult.notes.push(
+            `Mid price ${optionMidPercent.toFixed(2)}% of strike below minimum ${MIN_MID_PERCENT}%`,
+          );
+        }
+      }
+    } else {
+      analysisResult.status = "EXPIRATION_TOO_FAR";
+      analysisResult.notes.push("Option expiration beyond target window");
+    }
+  } else {
+    analysisResult.status = "LOW_STOCK_PRICE";
+    analysisResult.notes.push(
+      `Stock price $${currentPrice} below minimum $${MIN_STOCK_PRICE}`,
+    );
+  }
+
+  return analysisResult;
+}
+
 async function storeAnalysisResult(result) {
   try {
     await AnalysisResult.upsert({
@@ -301,85 +402,38 @@ async function processSymbols(symbols) {
 
   const ivrMap = await fetchIVRMap(symbols);
 
-  for (const symbol of symbols) {
-    const data = await fetchSymbolData(symbol);
-    if (data) {
-      const currentPrice = parseFloat(data.quote?.last) || null;
-      const stockBid = parseFloat(data.quote?.bid) || null;
-      const stockAsk = parseFloat(data.quote?.ask) || null;
-      const stockSpread = stockAsk && stockBid ? stockAsk - stockBid : null;
-      const strikePrice = parseFloat(data.options?.strike_price) || null;
-      const optionBid = parseFloat(data.options?.bid) || null;
-      const optionAsk = parseFloat(data.options?.ask) || null;
-      const optionMidPrice =
-        optionBid && optionAsk ? (optionBid + optionAsk) / 2 : null;
-      const optionMidPercent =
-        strikePrice && optionMidPrice
-          ? (optionMidPrice / strikePrice) * 100
-          : null;
-      const optionExpirationDate = data.options["expiration-date"]
-        ? new Date(data.options["expiration-date"])
-        : null;
+  for (let i = 0; i < symbols.length; i += 50) {
+    const chunk = symbols.slice(i, i + 50);
+    let chunkQuotes = [];
+    try {
+      chunkQuotes = await getQuotes(chunk);
+    } catch (e) {
+      console.error(
+        `Error fetching quotes for chunk starting with ${chunk[0]}:`,
+        e.message,
+      );
+    }
 
-      // Prepare analysis result object
-      const analysisResult = {
+    const quotesMap = new Map();
+    if (Array.isArray(chunkQuotes)) {
+      chunkQuotes.forEach((q) => quotesMap.set(q.symbol, q));
+    }
+
+    for (const symbol of chunk) {
+      const quote = quotesMap.get(symbol);
+      const data = await fetchSymbolData(symbol, quote);
+      let analysisResult = buildAnalysisResult({
         symbol,
-        current_price: currentPrice,
-        stock_bid: stockBid,
-        stock_ask: stockAsk,
-        stock_spread: stockSpread,
-        option_strike_price: strikePrice,
-        option_bid: optionBid,
-        option_ask: optionAsk,
-        option_mid_price: optionMidPrice,
-        option_mid_percent: optionMidPercent,
-        option_expiration_date: optionExpirationDate,
-        ivr: ivrMap.get(symbol) || null,
-        status: null,
-        notes: [],
-        days_to_earnings: null,
-      };
+        data,
+        analyzedAt: today,
+        expirationWindowDate: expirationDate,
+        ivrMap,
+      });
 
-      // Add analysis notes and status
-      if (currentPrice && currentPrice > MIN_STOCK_PRICE) {
-        if (optionExpirationDate && optionExpirationDate <= expirationDate) {
-          if (
-            optionMidPercent &&
-            parseFloat(optionMidPercent) > MIN_MID_PERCENT
-          ) {
-            analysisResult.status = "HIGH_MID_PERCENT";
-            analysisResult.notes.push(
-              `Mid price ${optionMidPercent.toFixed(
-                2,
-              )}% of strike exceeds minimum ${MIN_MID_PERCENT}%`,
-            );
-          } else {
-            analysisResult.status = "LOW_MID_PERCENT";
-            if (optionMidPercent) {
-              analysisResult.notes.push(
-                `Mid price ${optionMidPercent.toFixed(
-                  2,
-                )}% of strike below minimum ${MIN_MID_PERCENT}%`,
-              );
-            }
-          }
-        } else {
-          analysisResult.status = "EXPIRATION_TOO_FAR";
-          analysisResult.notes.push("Option expiration beyond target window");
-        }
-      } else {
-        analysisResult.status = "LOW_STOCK_PRICE";
-        analysisResult.notes.push(
-          `Stock price $${currentPrice} below minimum $${MIN_STOCK_PRICE}`,
-        );
-      }
-
-      // Always attempt to fetch days to earnings for every symbol
       try {
         const daysToEarnings = await getDaysToEarnings(symbol);
         if (daysToEarnings !== null && daysToEarnings !== undefined) {
           analysisResult.days_to_earnings = daysToEarnings;
-          // Only add note if not already added for this info
           if (
             !analysisResult.notes.some((n) => n.includes("days until earnings"))
           ) {
@@ -395,29 +449,22 @@ async function processSymbols(symbols) {
         }
       }
 
-      // Join notes into a single string
-      const notes = analysisResult.notes.join("; ");
-
-      // Store in database immediately
       await storeAnalysisResult(analysisResult);
-
       results.push(analysisResult);
 
-      // Console output for immediate feedback
+      const currentPrice = analysisResult.current_price;
+      const strikePrice = analysisResult.option_strike_price;
+      const optionMidPrice = analysisResult.option_mid_price;
+      const optionMidPercent = analysisResult.option_mid_percent;
+      const optionExpirationDate = analysisResult.option_expiration_date;
+
       if (
         currentPrice &&
         currentPrice > MIN_STOCK_PRICE &&
+        optionExpirationDate &&
         optionExpirationDate <= expirationDate
       ) {
-        const output = `${symbol}: Price: $${currentPrice?.toFixed(
-          2,
-        )} | Strike: $${strikePrice?.toFixed(
-          2,
-        )} | Mid: $${optionMidPrice?.toFixed(2)} (${optionMidPercent?.toFixed(
-          2,
-        )}% of strike) | Exp: ${
-          optionExpirationDate?.toISOString().split("T")[0]
-        }`;
+        const output = `${symbol}: Price: $${currentPrice?.toFixed(2)} | Strike: $${strikePrice?.toFixed(2)} | Mid: $${optionMidPrice?.toFixed(2)} (${optionMidPercent?.toFixed(2)}% of strike) | Exp: ${optionExpirationDate?.toISOString().split("T")[0]}`;
 
         if (
           optionMidPercent &&
@@ -432,7 +479,7 @@ async function processSymbols(symbols) {
         }
       }
     }
-    // Add a small delay to avoid rate limiting
+
     await sleep();
   }
 
@@ -441,7 +488,6 @@ async function processSymbols(symbols) {
 
 async function main() {
   try {
-    // Get symbols from command line arguments or use S&P 500 + ETFs
     let symbolsToProcess;
     if (symbols.length > 0) {
       symbolsToProcess = symbols;
@@ -459,14 +505,11 @@ async function main() {
       );
     }
 
-    // Initialize Tastytrade client
     await initializeTastytrade();
     console.log(chalk.green("Tastytrade client initialized successfully"));
 
-    // Process symbols
     const results = await processSymbols(symbolsToProcess);
 
-    // Log completion
     console.log(chalk.green("\nProcessing complete!"));
     console.log(`Total symbols processed: ${results.length}`);
   } catch (error) {
@@ -490,66 +533,17 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
     try {
       const data = await fetchSymbolData(symbol, preFetchedQuote);
       if (data) {
-        const currentPrice = parseFloat(data.quote?.last) || null;
-        const stockBid = parseFloat(data.quote?.bid) || null;
-        const stockAsk = parseFloat(data.quote?.ask) || null;
-        const stockSpread = stockAsk && stockBid ? stockAsk - stockBid : null;
-        const strikePrice = parseFloat(data.options?.strike_price) || null;
-        const optionBid = parseFloat(data.options?.bid || 0);
-        const optionAsk = parseFloat(data.options?.ask) || null;
-        const optionMidPrice = (optionBid + optionAsk) / 2;
-        const optionMidPercent =
-          strikePrice && optionMidPrice
-            ? (optionMidPrice / strikePrice) * 100
-            : null;
-        const optionExpirationDate = data.options["expiration-date"]
-          ? new Date(data.options["expiration-date"])
-          : null;
-
         // Get days to earnings for all symbols regardless of readiness
-        let daysToEarnings = await getDaysToEarnings(symbol);
+        const daysToEarnings = await getDaysToEarnings(symbol);
 
-        analysisResult = {
+        analysisResult = buildAnalysisResult({
           symbol,
-          current_price: currentPrice,
-          stock_bid: stockBid,
-          stock_ask: stockAsk,
-          stock_spread: stockSpread,
-          option_strike_price: strikePrice,
-          option_bid: optionBid,
-          option_ask: optionAsk,
-          option_mid_price: optionMidPrice,
-          option_mid_percent: optionMidPercent,
-          option_expiration_date: optionExpirationDate,
-          days_to_earnings: daysToEarnings,
-          ivr: ivrMap.get(symbol) || null,
-          analyzed_at: today,
-          status: "ANALYZING", // Default status
-        };
-
-        // Determine final status
-        if (currentPrice && currentPrice < MIN_STOCK_PRICE) {
-          analysisResult.status = "LOW_STOCK_PRICE";
-        } else if (
-          stockSpread &&
-          currentPrice &&
-          stockSpread > resolveMaxStockSpread(currentPrice)
-        ) {
-          analysisResult.status = "HIGH_SPREAD";
-        } else if (optionMidPercent && optionMidPercent < MIN_MID_PERCENT) {
-          analysisResult.status = "LOW_MID_PERCENT";
-        } else if (
-          currentPrice &&
-          stockSpread &&
-          optionMidPercent &&
-          currentPrice >= MIN_STOCK_PRICE &&
-          stockSpread <= resolveMaxStockSpread(currentPrice) &&
-          optionMidPercent >= MIN_MID_PERCENT
-        ) {
-          analysisResult.status = "READY";
-        } else {
-          analysisResult.status = "NOT_READY";
-        }
+          data,
+          analyzedAt: today,
+          expirationWindowDate: expirationDate,
+          ivrMap,
+          daysToEarnings,
+        });
       }
     } catch (error) {
       console.error(chalk.red(`Error processing ${symbol}: ${error.message}`));
@@ -626,4 +620,5 @@ module.exports = {
   processSymbolsWithProgress,
   getAccountHistory,
   resolveMaxStockSpread,
+  buildAnalysisResult,
 };
