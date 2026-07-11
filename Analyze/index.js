@@ -291,6 +291,34 @@ async function fetchIVRMap(symbols) {
   return ivrMap;
 }
 
+function normalizeAnalysisNotes(notes) {
+  if (Array.isArray(notes)) {
+    return notes.filter(Boolean).join("; ");
+  }
+  return notes || "";
+}
+
+function serializeAnalysisResultForStorage(result) {
+  return {
+    symbol: result.symbol,
+    current_price: result.current_price,
+    stock_bid: result.stock_bid,
+    stock_ask: result.stock_ask,
+    stock_spread: result.stock_spread,
+    option_strike_price: result.option_strike_price,
+    option_bid: result.option_bid,
+    option_ask: result.option_ask,
+    option_mid_price: result.option_mid_price,
+    option_mid_percent: result.option_mid_percent,
+    option_expiration_date: result.option_expiration_date,
+    days_to_earnings: result.days_to_earnings,
+    ivr: result.ivr,
+    status: result.status,
+    notes: normalizeAnalysisNotes(result.notes),
+    analyzed_at: result.analyzed_at || new Date(),
+  };
+}
+
 function buildAnalysisResult({
   symbol,
   data,
@@ -370,24 +398,7 @@ function buildAnalysisResult({
 
 async function storeAnalysisResult(result) {
   try {
-    await AnalysisResult.upsert({
-      symbol: result.symbol,
-      current_price: result.current_price,
-      stock_bid: result.stock_bid,
-      stock_ask: result.stock_ask,
-      stock_spread: result.stock_spread,
-      option_strike_price: result.option_strike_price,
-      option_bid: result.option_bid,
-      option_ask: result.option_ask,
-      option_mid_price: result.option_mid_price,
-      option_mid_percent: result.option_mid_percent,
-      option_expiration_date: result.option_expiration_date,
-      days_to_earnings: result.days_to_earnings,
-      ivr: result.ivr,
-      status: result.status,
-      notes: result.notes.join("; "),
-      analyzed_at: result.analyzed_at || new Date(),
-    });
+    await AnalysisResult.upsert(serializeAnalysisResultForStorage(result));
   } catch (error) {
     console.error(`Error storing analysis for ${result.symbol}:`, error);
     throw error;
@@ -558,9 +569,7 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
     // Save to database
     if (analysisResult) {
       try {
-        await AnalysisResult.upsert(analysisResult, {
-          where: { symbol, analyzed_at: analysisResult.analyzed_at },
-        });
+        await storeAnalysisResult(analysisResult);
       } catch (dbError) {
         console.error(`Error saving ${symbol} to database:`, dbError);
       }
@@ -621,4 +630,5 @@ module.exports = {
   getAccountHistory,
   resolveMaxStockSpread,
   buildAnalysisResult,
+  serializeAnalysisResultForStorage,
 };
