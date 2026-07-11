@@ -51,6 +51,10 @@ AnalysisResult.init(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
     },
+    delta: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+    },
     status: {
       type: DataTypes.STRING,
     },

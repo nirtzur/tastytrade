@@ -1328,7 +1328,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       return false; // Exclude if unknown (N/A)
     });
 
-    const maxAllocationPerSymbol = netLiquidity * 0.15;
+    const maxAllocationPerSymbol = netLiquidity * 0.05;
 
     // 3. Consult Gemini
     const genAI = new GoogleGenerativeAI(token);
@@ -1357,20 +1357,25 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
             a.ivr !== null && a.ivr !== undefined
               ? `${Number(a.ivr).toFixed(2)}`
               : "N/A";
-          return `- ${a.symbol}: Price $${a.current_price}, Strike $${a.option_strike_price}, Mid % ${a.option_mid_percent}%, IVR ${ivrStr}, Expiration ${expDateStr}, ${earningsInfo}`;
+          const deltaStr =
+            a.delta !== null && a.delta !== undefined
+              ? `${Number(a.delta).toFixed(2)}`
+              : "N/A";
+          return `- ${a.symbol}: Price $${a.current_price}, Strike $${a.option_strike_price}, Mid % ${a.option_mid_percent}%, IVR ${ivrStr}, Delta ${deltaStr}, Expiration ${expDateStr}, ${earningsInfo}`;
         })
         .join("\n")}
 
       Task:
       Recommend a list of new allocations.
-      - Each allocation (for a single symbol) must not exceed 15% of my Net Liquidity, which equals $${maxAllocationPerSymbol.toFixed(2)}.
+      - Each allocation (for a single symbol) must not exceed 5% of my Net Liquidity, which equals $${maxAllocationPerSymbol.toFixed(2)}.
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %' and highest 'IVR' (Implied Volatility Rank).
+      - Select strikes with delta close to -0.35 (representing slightly closer to the money for higher yields).
       - You may recommend symbols I already have open positions for.
       - Ensure that any recommended option contract expires at least 2 days prior to the earnings release (to avoid binary gap-down risk).
       - The total sum of all recommended allocations must not exceed $${netLiquidity.toFixed(2)}.
       - Provide the ENTIRE response as valid HTML.
-      - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %, IVR.
+      - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %, IVR, Delta.
       - In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href="https://finance.yahoo.com/quote/SYMBOL" target="_blank">SYMBOL</a>.
       - Include the brief reasoning for the selection as HTML paragraphs or lists below the table.
       - Do not use Markdown.

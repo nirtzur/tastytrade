@@ -327,6 +327,80 @@ async function findStrikeAbovePrice(option, currentPrice) {
   };
 }
 
+async function findStrikeByDelta(optionChain, currentPrice, targetDelta = 0.35, optionType = "put") {
+  const client = getClient();
+  
+  // 1. Filter strikes to OTM options
+  // Puts: Strike < currentPrice. Calls: Strike > currentPrice.
+  const candidates = optionChain.strikes.filter((s) => {
+    const strikePrice = parseFloat(s["strike-price"]);
+    if (optionType === "put") {
+      return s.put !== null && strikePrice < currentPrice;
+    } else {
+      return s.call !== null && strikePrice > currentPrice;
+    }
+  });
+
+  if (candidates.length === 0) {
+    throw new Error(`No OTM strikes found for option type: ${optionType}`);
+  }
+
+  // Sort candidates so we look at the closest ones first
+  candidates.sort((a, b) => {
+    const diffA = Math.abs(parseFloat(a["strike-price"]) - currentPrice);
+    const diffB = Math.abs(parseFloat(b["strike-price"]) - currentPrice);
+    return diffA - diffB;
+  });
+
+  // Pick the closest 12 strikes to check delta
+  const subset = candidates.slice(0, 12);
+  const symbols = subset.map((s) => (optionType === "put" ? s.put : s.call));
+
+  // 2. Fetch delta in batch via by-type endpoint
+  const encodedSymbols = symbols.map((s) => encodeURIComponent(s)).join(",");
+  const response = await client.httpClient.getData(`/market-data/by-type?equity-option=${encodedSymbols}`);
+  const responseBody = response.data || response;
+  const items = responseBody.data?.items || [];
+
+  if (items.length === 0) {
+    throw new Error("Failed to fetch option quotes for delta selection");
+  }
+
+  // 3. Find the option with delta closest to targetDelta
+  let bestStrike = null;
+  let minDiff = Infinity;
+
+  items.forEach((item) => {
+    const itemDelta = item.delta !== undefined && item.delta !== null ? Math.abs(parseFloat(item.delta)) : null;
+    if (itemDelta !== null) {
+      const diff = Math.abs(itemDelta - Math.abs(targetDelta));
+      if (diff < minDiff) {
+        minDiff = diff;
+        const matchedStrike = subset.find((s) => (optionType === "put" ? s.put === item.symbol : s.call === item.symbol));
+        if (matchedStrike) {
+          bestStrike = {
+            symbol: item.symbol,
+            strike_price: parseFloat(matchedStrike["strike-price"]),
+            delta: parseFloat(item.delta),
+            bid: parseFloat(item.bid) || 0,
+            ask: parseFloat(item.ask) || null,
+            last: parseFloat(item.last) || null,
+          };
+        }
+      }
+    }
+  });
+
+  if (!bestStrike) {
+    throw new Error(`No strike found matching target Delta ${targetDelta}`);
+  }
+
+  return {
+    ...optionChain,
+    ...bestStrike,
+  };
+}
+
 async function getOptionQuote(option) {
   const client = getClient();
   const optionQuoteResponse = await client.httpClient.getData(
@@ -342,6 +416,7 @@ async function getOptionQuote(option) {
     bid: data.bid,
     ask: data.ask,
     last: data.last,
+    delta: data.delta !== undefined && data.delta !== null ? parseFloat(data.delta) : null,
   };
 }
 
@@ -364,8 +439,12 @@ async function getNextOption(symbol, quoteData) {
     );
 
     const expiration = await findNextExpiration(chainResponse, today);
-    const strike = await findStrikeAbovePrice(expiration, currentPrice);
-    return await getOptionQuote(strike);
+    
+    // Select delta-based strike
+    const targetDelta = parseFloat(process.env.TARGET_DELTA) || 0.35;
+    const optionType = process.env.OPTION_TYPE || "put";
+    
+    return await findStrikeByDelta(expiration, currentPrice, targetDelta, optionType);
   } catch (error) {
     handleApiError(error);
     throw new Error(
@@ -547,4 +626,5 @@ module.exports = {
   isLoggedIn,
   getAccountBalance,
   getMarketMetrics,
+  findStrikeByDelta,
 };
