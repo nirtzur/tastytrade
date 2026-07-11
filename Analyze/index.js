@@ -22,10 +22,24 @@ const AnalysisResult = require("../models/AnalysisResult");
 
 // Trading parameters from environment variables
 const MIN_STOCK_PRICE = parseFloat(process.env.MIN_STOCK_PRICE) || 30;
-const MAX_STOCK_SPREAD_PCT =
-  parseFloat(process.env.MAX_STOCK_SPREAD_PCT) || 0.01;
+const MAX_STOCK_SPREAD_PCT = parseFloat(process.env.MAX_STOCK_SPREAD_PCT);
+const MAX_STOCK_SPREAD = parseFloat(process.env.MAX_STOCK_SPREAD);
 const MIN_MID_PERCENT = parseFloat(process.env.MIN_MID_PERCENT) || 3;
 const DAYS_TO_EXPIRATION = parseInt(process.env.DAYS_TO_EXPIRATION) || 10;
+
+function resolveMaxStockSpread(stockPrice, env = process.env) {
+  const configuredPct = parseFloat(env?.MAX_STOCK_SPREAD_PCT);
+  if (Number.isFinite(configuredPct) && configuredPct > 0) {
+    return stockPrice * configuredPct;
+  }
+
+  const configuredSpread = parseFloat(env?.MAX_STOCK_SPREAD);
+  if (Number.isFinite(configuredSpread) && configuredSpread >= 0) {
+    return configuredSpread;
+  }
+
+  return stockPrice * 0.01;
+}
 
 // Create MySQL connection pool
 const pool = mysql.createPool({
@@ -161,7 +175,7 @@ async function fetchSymbolData(symbol, preFetchedQuote = null) {
 
     // Validate stock spread before proceeding
     if (stockSpread !== null && stockPrice !== null) {
-      const maxSpreadAllowed = stockPrice * MAX_STOCK_SPREAD_PCT;
+      const maxSpreadAllowed = resolveMaxStockSpread(stockPrice);
       if (stockSpread > maxSpreadAllowed) {
         if (isDebug) {
           console.log(
@@ -271,6 +285,7 @@ async function storeAnalysisResult(result) {
       ivr: result.ivr,
       status: result.status,
       notes: result.notes.join("; "),
+      analyzed_at: result.analyzed_at || new Date(),
     });
   } catch (error) {
     console.error(`Error storing analysis for ${result.symbol}:`, error);
@@ -518,7 +533,7 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
         } else if (
           stockSpread &&
           currentPrice &&
-          stockSpread > currentPrice * MAX_STOCK_SPREAD_PCT
+          stockSpread > resolveMaxStockSpread(currentPrice)
         ) {
           analysisResult.status = "HIGH_SPREAD";
         } else if (optionMidPercent && optionMidPercent < MIN_MID_PERCENT) {
@@ -528,7 +543,7 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
           stockSpread &&
           optionMidPercent &&
           currentPrice >= MIN_STOCK_PRICE &&
-          stockSpread <= currentPrice * MAX_STOCK_SPREAD_PCT &&
+          stockSpread <= resolveMaxStockSpread(currentPrice) &&
           optionMidPercent >= MIN_MID_PERCENT
         ) {
           analysisResult.status = "READY";
@@ -610,4 +625,5 @@ module.exports = {
   processSymbols,
   processSymbolsWithProgress,
   getAccountHistory,
+  resolveMaxStockSpread,
 };
