@@ -321,15 +321,7 @@ function serializeAnalysisResultForStorage(result) {
 }
 
 function shouldSkipSymbolForAnalysis(errorMessage) {
-  if (!errorMessage) return false;
-
-  const normalized = errorMessage.toLowerCase();
-  return (
-    normalized.includes("no valid expiration found") ||
-    normalized.includes("no valid strike found") ||
-    normalized.includes("no weekly") ||
-    normalized.includes("no valid option chain data")
-  );
+  return false;
 }
 
 function buildAnalysisResult({
@@ -447,13 +439,6 @@ async function processSymbols(symbols) {
     for (const symbol of chunk) {
       const quote = quotesMap.get(symbol);
       const data = await fetchSymbolData(symbol, quote);
-      const hasWeeklyOptionData = data?.options || false;
-      if (
-        !hasWeeklyOptionData &&
-        shouldSkipSymbolForAnalysis(data?.warnings?.join(" ") || "")
-      ) {
-        continue;
-      }
 
       let analysisResult = buildAnalysisResult({
         symbol,
@@ -566,14 +551,6 @@ async function processSymbolsWithProgress(symbols, progressCallback) {
     try {
       const data = await fetchSymbolData(symbol, preFetchedQuote);
       if (data) {
-        const hasWeeklyOptionData = data?.options || false;
-        if (
-          !hasWeeklyOptionData &&
-          shouldSkipSymbolForAnalysis(data?.warnings?.join(" ") || "")
-        ) {
-          return null;
-        }
-
         // Get days to earnings for all symbols regardless of readiness
         const daysToEarnings = await getDaysToEarnings(symbol);
 

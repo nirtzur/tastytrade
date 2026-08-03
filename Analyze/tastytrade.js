@@ -627,4 +627,5 @@ module.exports = {
   getAccountBalance,
   getMarketMetrics,
   findStrikeByDelta,
+  getClient,
 };

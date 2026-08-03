@@ -46,16 +46,16 @@ test("serializes analysis notes into a database-ready string", () => {
   assert.equal(serialized.notes, "first note; second note");
 });
 
-test("filters out symbols when no weekly option expiration is available", () => {
+test("keeps symbols in the analysis set even when option-chain data is unavailable", () => {
   assert.equal(
     shouldSkipSymbolForAnalysis("No valid expiration found in option chain"),
-    true,
+    false,
   );
   assert.equal(
     shouldSkipSymbolForAnalysis(
       "Failed to fetch option chain for AAPL: No valid strike found above current price",
     ),
-    true,
+    false,
   );
   assert.equal(
     shouldSkipSymbolForAnalysis(
