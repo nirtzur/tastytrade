@@ -109,6 +109,17 @@ const AnalysisTable = () => {
     [openYahooFinance],
   );
 
+  const refreshLiveTableData = useCallback(async () => {
+    try {
+      const { data } = await client.get("/api/trading-data");
+      if (Array.isArray(data)) {
+        setRawData(transformData(data));
+      }
+    } catch (err) {
+      console.error("Failed to refresh live analysis table:", err);
+    }
+  }, [transformData]);
+
   const applyFilters = useCallback(
     (data) => {
       if (!data.length) return [];
@@ -238,6 +249,7 @@ const AnalysisTable = () => {
                   symbol: progressData.symbol,
                   message: progressData.message,
                 });
+                refreshLiveTableData();
                 if (
                   progressData.total > 0 &&
                   progressData.current >= progressData.total
@@ -245,11 +257,7 @@ const AnalysisTable = () => {
                   setProgressInfo(null);
                   setRefreshing(false);
                   monitorEventSource.close();
-                  client.get("/api/trading-data").then(({ data }) => {
-                    if (Array.isArray(data)) {
-                      setRawData(transformData(data));
-                    }
-                  });
+                  refreshLiveTableData();
                 }
                 break;
               case "complete":
@@ -354,15 +362,12 @@ const AnalysisTable = () => {
               symbol: data.symbol,
               message: data.message,
             });
+            refreshLiveTableData();
             if (data.total > 0 && data.current >= data.total) {
               setProgressInfo(null);
               setRefreshing(false);
               eventSource.close();
-              client.get("/api/trading-data").then(({ data: tableData }) => {
-                if (Array.isArray(tableData)) {
-                  setRawData(transformData(tableData));
-                }
-              });
+              refreshLiveTableData();
             }
             break;
           case "complete":
