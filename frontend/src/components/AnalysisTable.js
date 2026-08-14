@@ -113,12 +113,12 @@ const AnalysisTable = () => {
     try {
       const { data } = await client.get("/api/trading-data");
       if (Array.isArray(data)) {
-        setRawData(transformData(data));
+        setRawData(data);
       }
     } catch (err) {
       console.error("Failed to refresh live analysis table:", err);
     }
-  }, [transformData]);
+  }, []);
 
   const applyFilters = useCallback(
     (data) => {
@@ -139,10 +139,10 @@ const AnalysisTable = () => {
       if (selectedStatuses !== "all") {
         if (selectedStatuses === "hide_low") {
           filtered = filtered.filter(
-            (row) => !excludedStatusesConst[row.Status],
+            (row) => !excludedStatusesConst[row.status],
           );
         } else {
-          filtered = filtered.filter((row) => row.Status === selectedStatuses);
+          filtered = filtered.filter((row) => row.status === selectedStatuses);
         }
       }
 
@@ -170,19 +170,17 @@ const AnalysisTable = () => {
         if (!mounted) return;
 
         if (Array.isArray(data)) {
-          const transformedData = transformData(data);
+          setRawData(data);
 
           // Find the latest date
-          if (transformedData.length > 0 && !selectedDate) {
-            const latestDate = transformedData.reduce((latest, current) => {
+          if (data.length > 0 && !selectedDate) {
+            const latestDate = data.reduce((latest, current) => {
               const currentDate = dayjs(current.analyzed_at);
               return latest.isAfter(currentDate) ? latest : currentDate;
-            }, dayjs(transformedData[0].analyzed_at));
+            }, dayjs(data[0].analyzed_at));
 
             setSelectedDate(latestDate);
           }
-
-          setRawData(transformedData);
         } else {
           throw new Error("Invalid analysis data format");
         }
@@ -266,7 +264,7 @@ const AnalysisTable = () => {
                 // Fetch updated data
                 client.get("/api/trading-data").then(({ data }) => {
                   if (Array.isArray(data)) {
-                    setRawData(transformData(data));
+                    setRawData(data);
                   }
                 });
                 break;
@@ -320,10 +318,11 @@ const AnalysisTable = () => {
     };
   }, [transformData]); // Include transformData dependency
 
-  // Apply filters whenever dependencies change
+  // Apply filters to raw rows, then transform only the visible rows for rendering.
   useEffect(() => {
-    setFilteredData(applyFilters(rawData));
-  }, [rawData, selectedDate, selectedStatuses, applyFilters]);
+    const filteredRows = applyFilters(rawData);
+    setFilteredData(transformData(filteredRows));
+  }, [rawData, selectedDate, selectedStatuses, applyFilters, transformData]);
 
   const handleRefresh = async () => {
     try {
@@ -377,7 +376,7 @@ const AnalysisTable = () => {
             // Fetch updated data
             client.get("/api/trading-data").then(({ data: tableData }) => {
               if (Array.isArray(tableData)) {
-                setRawData(transformData(tableData));
+                setRawData(tableData);
               }
             });
             break;
