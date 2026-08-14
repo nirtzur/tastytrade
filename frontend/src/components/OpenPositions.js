@@ -383,27 +383,74 @@ function OpenPositions() {
 
       {/* Cash Secured Puts Summary */}
       {(() => {
-        const cashSecuredPuts = positions.filter(
-          (position) =>
-            position.totalShares === 0 &&
-            position.totalOptionContracts > 0 &&
-            position.optionType === "P" &&
-            position.strikePrice,
-        );
+        // Extract individual active CSP contract positions from the transaction history of positions
+        const individualCSPs = [];
 
-        if (cashSecuredPuts.length === 0) return null;
+        positions.forEach((position) => {
+          // Only check positions that have active options and no stock shares
+          if (position.totalShares > 0) return;
 
-        const totalCashRequired = cashSecuredPuts.reduce((sum, position) => {
-          return (
-            sum + position.totalOptionContracts * position.strikePrice * 100
-          );
+          const contractsByOptionSymbol = {};
+
+          if (position.transactions && Array.isArray(position.transactions)) {
+            position.transactions.forEach((tx) => {
+              if (tx.instrument_type !== "Equity Option") return;
+              const optSymbol = tx.symbol;
+              contractsByOptionSymbol[optSymbol] ??= {
+                symbol: optSymbol,
+                netContracts: 0,
+              };
+
+              const quantity = Math.abs(parseFloat(tx.quantity) || 0);
+              const isOpening =
+                tx.action === "Sell to Open" || tx.action === "Buy to Open";
+              if (isOpening) {
+                contractsByOptionSymbol[optSymbol].netContracts += quantity;
+              } else {
+                contractsByOptionSymbol[optSymbol].netContracts -= quantity;
+              }
+            });
+          }
+
+          // Generate individual CSP objects
+          Object.values(contractsByOptionSymbol).forEach((opt) => {
+            if (opt.netContracts <= 0) return;
+
+            // Match OCC format (e.g. "MRNA  260814P00056000")
+            const match = opt.symbol.match(/^(.+?)\s+(\d{6})([CP])(\d{8})$/);
+            if (!match) return;
+
+            const [, underlying, dateStr, type, strikeStr] = match;
+            if (type !== "P") return; // Only Puts for Cash Secured Puts
+
+            const strikePrice = parseFloat(strikeStr) / 1000;
+            const year = "20" + dateStr.substring(0, 2);
+            const month = dateStr.substring(2, 4);
+            const day = dateStr.substring(4, 6);
+            const expirationDate = `${year}-${month}-${day}`;
+
+            individualCSPs.push({
+              symbol: opt.symbol,
+              underlying,
+              strikePrice,
+              totalOptionContracts: opt.netContracts,
+              optionExpirationDate: expirationDate,
+              currentPrice: position.currentPrice,
+            });
+          });
+        });
+
+        if (individualCSPs.length === 0) return null;
+
+        const totalCashRequired = individualCSPs.reduce((sum, item) => {
+          return sum + item.totalOptionContracts * item.strikePrice * 100;
         }, 0);
 
         // Group by expiration date
         const groupedByWeek = {};
 
-        cashSecuredPuts.forEach((position) => {
-          const dateStr = position.optionExpirationDate || "Unknown";
+        individualCSPs.forEach((item) => {
+          const dateStr = item.optionExpirationDate || "Unknown";
           if (!groupedByWeek[dateStr]) {
             groupedByWeek[dateStr] = {
               date: dateStr,
@@ -412,9 +459,9 @@ function OpenPositions() {
             };
           }
           const cashRequired =
-            position.totalOptionContracts * position.strikePrice * 100;
+            item.totalOptionContracts * item.strikePrice * 100;
           groupedByWeek[dateStr].positions.push({
-            ...position,
+            ...item,
             cashRequired,
           });
           groupedByWeek[dateStr].totalCash += cashRequired;
@@ -523,8 +570,8 @@ function OpenPositions() {
             </Box>
 
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Based on {cashSecuredPuts.length} cash secured put position
-              {cashSecuredPuts.length !== 1 ? "s" : ""}
+              Based on {individualCSPs.length} cash secured put position
+              {individualCSPs.length !== 1 ? "s" : ""}
             </Typography>
 
             {/* Weekly Breakdown Grid/Stack */}
