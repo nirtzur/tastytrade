@@ -6,6 +6,9 @@ const {
   buildAnalysisResult,
   serializeAnalysisResultForStorage,
   shouldSkipSymbolForAnalysis,
+  calculateDaysToExpiration,
+  isWeeklyOptionCandidate,
+  calculateDaysBetweenDates,
 } = require("../Analyze/index");
 
 test("uses percentage-based max spread when MAX_STOCK_SPREAD_PCT is provided", () => {
@@ -63,4 +66,30 @@ test("keeps symbols in the analysis set even when option-chain data is unavailab
     ),
     false,
   );
+});
+
+test("calculates time-to-expiration from the actual expiration date", () => {
+  const analyzedAt = new Date("2026-01-01T12:00:00Z");
+  const expiration = new Date("2026-01-08T12:00:00Z");
+  assert.equal(calculateDaysToExpiration(expiration, analyzedAt), 7);
+});
+
+test("calculates earnings-day deltas without timezone drift", () => {
+  const today = new Date("2026-08-14T18:00:00-04:00");
+  const earningsDate = new Date("2026-08-20T00:00:00Z");
+  assert.equal(calculateDaysBetweenDates(today, earningsDate), 5);
+  assert.equal(calculateDaysBetweenDates(earningsDate, today), -5);
+});
+
+test("only treats option expirations within the weekly window as valid candidates", () => {
+  const now = new Date("2026-01-01T12:00:00Z");
+  assert.equal(
+    isWeeklyOptionCandidate(new Date("2026-01-08T12:00:00Z"), now),
+    true,
+  );
+  assert.equal(
+    isWeeklyOptionCandidate(new Date("2026-01-20T12:00:00Z"), now),
+    false,
+  );
+  assert.equal(isWeeklyOptionCandidate(null, now), false);
 });

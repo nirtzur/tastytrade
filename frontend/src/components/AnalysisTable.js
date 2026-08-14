@@ -113,13 +113,25 @@ const AnalysisTable = () => {
     (data) => {
       if (!data.length) return [];
 
+      let filtered = data.filter((row) => {
+        if (!row.option_expiration_date || !row.analyzed_at) return false;
+        const expirationDate = new Date(row.option_expiration_date);
+        const analyzedDate = new Date(row.analyzed_at);
+        const diffDays = Math.round(
+          (expirationDate.getTime() - analyzedDate.getTime()) /
+            (1000 * 60 * 60 * 24),
+        );
+        return diffDays > 3 && diffDays <= 10;
+      });
+
       // First apply status filter
-      let filtered = data;
       if (selectedStatuses !== "all") {
         if (selectedStatuses === "hide_low") {
-          filtered = data.filter((row) => !excludedStatusesConst[row.Status]);
+          filtered = filtered.filter(
+            (row) => !excludedStatusesConst[row.Status],
+          );
         } else {
-          filtered = data.filter((row) => row.Status === selectedStatuses);
+          filtered = filtered.filter((row) => row.Status === selectedStatuses);
         }
       }
 

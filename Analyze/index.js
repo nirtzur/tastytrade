@@ -27,6 +27,33 @@ const MAX_STOCK_SPREAD = parseFloat(process.env.MAX_STOCK_SPREAD);
 const MIN_MID_PERCENT = parseFloat(process.env.MIN_MID_PERCENT) || 3;
 const DAYS_TO_EXPIRATION = parseInt(process.env.DAYS_TO_EXPIRATION) || 10;
 
+function normalizeLocalDate(dateValue) {
+  const date = new Date(dateValue);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function calculateDaysBetweenDates(startDate, endDate) {
+  if (!startDate || !endDate) return null;
+
+  const start = normalizeLocalDate(startDate);
+  const end = normalizeLocalDate(endDate);
+  return Math.round((end - start) / (1000 * 60 * 60 * 24));
+}
+
+function calculateDaysToExpiration(expirationDate, referenceDate = new Date()) {
+  if (!expirationDate) return null;
+  return calculateDaysBetweenDates(referenceDate, expirationDate);
+}
+
+function isWeeklyOptionCandidate(expirationDate, referenceDate = new Date()) {
+  const daysToExpiration = calculateDaysToExpiration(
+    expirationDate,
+    referenceDate,
+  );
+  if (daysToExpiration === null || Number.isNaN(daysToExpiration)) return false;
+  return daysToExpiration > 3 && daysToExpiration <= 10;
+}
+
 function resolveMaxStockSpread(stockPrice, env = process.env) {
   const configuredPct = parseFloat(env?.MAX_STOCK_SPREAD_PCT);
   if (Number.isFinite(configuredPct) && configuredPct > 0) {
@@ -92,30 +119,33 @@ async function getDaysToEarnings(symbol) {
         return null;
       }
 
-      // Sort by date
-      const sortedEarnings = earnings.earningsCalendar.sort(
-        (a, b) => new Date(a.date) - new Date(b.date),
-      );
+      // Sort by date using local date-only comparisons to avoid timezone drift
+      const sortedEarnings = earnings.earningsCalendar.sort((a, b) => {
+        const aDate = normalizeLocalDate(a.date);
+        const bDate = normalizeLocalDate(b.date);
+        return aDate - bDate;
+      });
 
       // 1. Look for future earnings
-      const nextEarnings = sortedEarnings.find(
-        (e) => new Date(e.date) >= today,
-      );
+      const nextEarnings = sortedEarnings.find((e) => {
+        const eventDate = normalizeLocalDate(e.date);
+        return eventDate >= normalizeLocalDate(today);
+      });
 
       if (nextEarnings) {
-        const nextDate = new Date(nextEarnings.date);
-        return Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24));
+        const nextDate = normalizeLocalDate(nextEarnings.date);
+        return calculateDaysBetweenDates(today, nextDate);
       }
 
       // 2. If no future earnings, find the most recent past earnings
       const lastEarnings = [...sortedEarnings]
         .reverse()
-        .find((e) => new Date(e.date) < today);
+        .find((e) => normalizeLocalDate(e.date) < normalizeLocalDate(today));
 
       if (lastEarnings) {
-        const lastDate = new Date(lastEarnings.date);
+        const lastDate = normalizeLocalDate(lastEarnings.date);
         // Returns negative number indicating days since last earnings
-        return Math.ceil((lastDate - today) / (1000 * 60 * 60 * 24));
+        return calculateDaysBetweenDates(today, lastDate);
       }
 
       return null;
@@ -312,6 +342,7 @@ function serializeAnalysisResultForStorage(result) {
     option_mid_percent: result.option_mid_percent,
     option_expiration_date: result.option_expiration_date,
     days_to_earnings: result.days_to_earnings,
+    days_to_expiration: result.days_to_expiration,
     ivr: result.ivr,
     delta: result.delta,
     status: result.status,
@@ -349,6 +380,11 @@ function buildAnalysisResult({
     ? new Date(data.options["expiration-date"])
     : null;
 
+  const daysToExpiration = calculateDaysToExpiration(
+    optionExpirationDate,
+    analyzedAt,
+  );
+
   const analysisResult = {
     symbol,
     current_price: currentPrice,
@@ -367,14 +403,20 @@ function buildAnalysisResult({
     notes: [...(data?.warnings || [])],
     days_to_earnings: daysToEarnings,
     analyzed_at: analyzedAt,
+    days_to_expiration: daysToExpiration,
   };
 
   if (!data?.options) {
     analysisResult.notes.push("No valid option chain data available");
   }
 
+  const isWeeklyCandidate = isWeeklyOptionCandidate(
+    optionExpirationDate,
+    analyzedAt,
+  );
+
   if (currentPrice && currentPrice > MIN_STOCK_PRICE) {
-    if (optionExpirationDate && optionExpirationDate <= expirationWindowDate) {
+    if (optionExpirationDate && isWeeklyCandidate) {
       if (optionMidPercent && parseFloat(optionMidPercent) > MIN_MID_PERCENT) {
         analysisResult.status = "HIGH_MID_PERCENT";
         analysisResult.notes.push(
@@ -639,4 +681,7 @@ module.exports = {
   buildAnalysisResult,
   serializeAnalysisResultForStorage,
   shouldSkipSymbolForAnalysis,
+  calculateDaysBetweenDates,
+  calculateDaysToExpiration,
+  isWeeklyOptionCandidate,
 };

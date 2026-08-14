@@ -19,6 +19,7 @@ const {
 const {
   processSymbols,
   processSymbolsWithProgress,
+  isWeeklyOptionCandidate,
 } = require("./Analyze/index");
 const { getSP500Symbols } = require("./Analyze/sp500");
 const { getSectorETFs } = require("./Analyze/etfs");
@@ -481,7 +482,15 @@ app.get("/api/trading-data", authenticate, async (req, res) => {
       raw: true,
     });
 
-    res.json(results);
+    const weeklyResults = results.filter((row) => {
+      if (!row.option_expiration_date) return false;
+      return isWeeklyOptionCandidate(
+        row.option_expiration_date,
+        new Date(row.analyzed_at),
+      );
+    });
+
+    res.json(weeklyResults);
   } catch (error) {
     logError("Error fetching trading data:", error);
     res.status(500).json({
@@ -1298,13 +1307,20 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       });
     }
 
-    // Filter analysis: days to earnings: 8 <= days <= 70 or days to earnings < 0 (past earnings)
-    // AND the option contract must expire at least 2 days prior to the earnings release (if earnings are in the future)
+    // Filter analysis: only weekly contracts, then only earnings windows that fit the strategy.
     const filteredAnalysis = analysisResults.filter((a) => {
+      if (!a.option_expiration_date) return false;
+      if (
+        !isWeeklyOptionCandidate(
+          a.option_expiration_date,
+          new Date(a.analyzed_at),
+        )
+      ) {
+        return false;
+      }
+
       if (a.days_to_earnings !== null && a.days_to_earnings !== undefined) {
-        // If earnings are in the future, check if the option contract expires at least 2 days prior
         if (a.days_to_earnings >= 0) {
-          if (!a.option_expiration_date) return false;
           const expDate = new Date(a.option_expiration_date);
           const analyzedDate = new Date(a.analyzed_at);
           expDate.setHours(0, 0, 0, 0);
@@ -1314,21 +1330,19 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
           );
 
           if (a.days_to_earnings - daysToExpiration < 2) {
-            return false; // Exclude if option expires less than 2 days before earnings (or after earnings)
+            return false;
           }
         }
 
-        // Keep if earnings are far enough in future (>= 8 days and <= 70 days) OR in the past (< 0 days)
-        // Filter out if earnings are coming up soon (0 <= days < 8) or way too far (> 70 days)
         return (
           (a.days_to_earnings >= 8 && a.days_to_earnings <= 70) ||
           a.days_to_earnings < 0
         );
       }
-      return false; // Exclude if unknown (N/A)
+      return false;
     });
 
-    const maxAllocationPerSymbol = netLiquidity * 0.05;
+    const maxAllocationPerSymbol = netLiquidity * 0.08;
 
     // 3. Consult Gemini
     const genAI = new GoogleGenerativeAI(token);
@@ -1367,7 +1381,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
 
       Task:
       Recommend a list of new allocations.
-      - Each allocation (for a single symbol) must not exceed 5% of my Net Liquidity, which equals $${maxAllocationPerSymbol.toFixed(2)}.
+      - Each allocation (for a single symbol) must not exceed 8% of my Net Liquidity, which equals $${maxAllocationPerSymbol.toFixed(2)}.
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %' and highest 'IVR' (Implied Volatility Rank).
       - Select strikes with delta close to -0.35 (representing slightly closer to the money for higher yields).
