@@ -986,19 +986,26 @@ async function fetchAggregatedPositions() {
     let strikePrice = null;
     let optionType = null;
     let latestOptionDate = null;
+    let optionExpirationDate = null;
 
     for (const tx of position.transactions) {
       if (tx.instrument_type === "Equity Option") {
         const txDate = new Date(tx.executed_at);
         if (!latestOptionDate || txDate > latestOptionDate) {
-          const match = tx.symbol.match(/([CP])(\d{8})$/);
+          const match = tx.symbol.match(/(\d{6})([CP])(\d{8})$/);
           if (match) {
-            optionType = match[1];
-            const strikePart = match[2];
+            optionType = match[2];
+            const strikePart = match[3];
             const strikeValue = parseFloat(strikePart) / 1000;
             if (strikeValue > 0) {
               strikePrice = strikeValue;
               latestOptionDate = txDate;
+
+              const expDateStr = match[1];
+              const year = "20" + expDateStr.substring(0, 2);
+              const month = expDateStr.substring(2, 4);
+              const day = expDateStr.substring(4, 6);
+              optionExpirationDate = `${year}-${month}-${day}`;
             }
           }
         }
@@ -1006,6 +1013,7 @@ async function fetchAggregatedPositions() {
     }
     position.strikePrice = strikePrice;
     position.optionType = optionType;
+    position.optionExpirationDate = optionExpirationDate;
 
     if (!position.isOpen) {
       // CLOSED LOGIC

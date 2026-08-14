@@ -15,6 +15,7 @@ import {
   Button,
 } from "@mui/material";
 import { Refresh as RefreshIcon } from "@mui/icons-material";
+import dayjs from "dayjs";
 import client from "../api/client";
 
 function OpenPositions() {
@@ -30,7 +31,7 @@ function OpenPositions() {
       setExchangeRateLoading(true);
       // Using a free exchange rate API
       const response = await fetch(
-        "https://api.exchangerate-api.com/v4/latest/USD"
+        "https://api.exchangerate-api.com/v4/latest/USD",
       );
       const data = await response.json();
       setUsdIlsRate(data.rates.ILS);
@@ -387,7 +388,7 @@ function OpenPositions() {
             position.totalShares === 0 &&
             position.totalOptionContracts > 0 &&
             position.optionType === "P" &&
-            position.strikePrice
+            position.strikePrice,
         );
 
         if (cashSecuredPuts.length === 0) return null;
@@ -398,27 +399,240 @@ function OpenPositions() {
           );
         }, 0);
 
+        // Group by expiration date
+        const groupedByWeek = {};
+
+        cashSecuredPuts.forEach((position) => {
+          const dateStr = position.optionExpirationDate || "Unknown";
+          if (!groupedByWeek[dateStr]) {
+            groupedByWeek[dateStr] = {
+              date: dateStr,
+              positions: [],
+              totalCash: 0,
+            };
+          }
+          const cashRequired =
+            position.totalOptionContracts * position.strikePrice * 100;
+          groupedByWeek[dateStr].positions.push({
+            ...position,
+            cashRequired,
+          });
+          groupedByWeek[dateStr].totalCash += cashRequired;
+        });
+
+        // Sort groups by date ascending (closest expiration first)
+        const sortedGroups = Object.values(groupedByWeek).sort((a, b) => {
+          if (a.date === "Unknown") return 1;
+          if (b.date === "Unknown") return -1;
+          return a.date.localeCompare(b.date);
+        });
+
+        const getExpirationBadge = (dateStr) => {
+          if (dateStr === "Unknown") {
+            return (
+              <Chip
+                label="Unknown Expiration"
+                size="small"
+                variant="outlined"
+              />
+            );
+          }
+
+          const exp = dayjs(dateStr);
+          const today = dayjs().startOf("day");
+          const diffDays = exp.diff(today, "day");
+
+          if (diffDays === 0) {
+            return (
+              <Chip
+                label="Expiring Tonight"
+                color="error"
+                size="small"
+                variant="filled"
+                sx={{ fontWeight: "bold" }}
+              />
+            );
+          } else if (diffDays === 1) {
+            return (
+              <Chip
+                label="Expiring Tomorrow"
+                color="warning"
+                size="small"
+                variant="filled"
+                sx={{ fontWeight: "bold" }}
+              />
+            );
+          } else if (diffDays < 0) {
+            return (
+              <Chip
+                label={`Expired ${Math.abs(diffDays)}d ago`}
+                color="default"
+                size="small"
+                variant="outlined"
+              />
+            );
+          } else {
+            return (
+              <Chip
+                label={`${diffDays} days left`}
+                color="primary"
+                size="small"
+                variant="outlined"
+              />
+            );
+          }
+        };
+
+        const formatGroupHeaderDate = (dateStr) => {
+          if (dateStr === "Unknown") return "Unknown Expiration";
+          return dayjs(dateStr).format("dddd, MMMM D, YYYY");
+        };
+
         return (
           <Box
             sx={{
-              padding: 2,
-              marginTop: 2,
+              padding: 3,
+              marginTop: 4,
               backgroundColor: "background.paper",
-              borderRadius: 1,
-              boxShadow: 1,
+              borderRadius: 2,
+              boxShadow: 2,
+              border: "1px solid",
+              borderColor: "divider",
             }}
           >
-            <Typography variant="h6" gutterBottom>
-              Cash Secured Puts Summary
-            </Typography>
-            <Typography variant="body1">
-              Total Cash Required to be Secured:{" "}
-              {formatCurrency(totalCashRequired)}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                mb: 3,
+                flexWrap: "wrap",
+                gap: 1,
+              }}
+            >
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Cash Secured Puts Summary
+              </Typography>
+              <Typography
+                variant="h6"
+                color="primary.main"
+                sx={{ fontWeight: "bold" }}
+              >
+                Total Secured Cash: {formatCurrency(totalCashRequired)}
+              </Typography>
+            </Box>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Based on {cashSecuredPuts.length} cash secured put position
               {cashSecuredPuts.length !== 1 ? "s" : ""}
             </Typography>
+
+            {/* Weekly Breakdown Grid/Stack */}
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {sortedGroups.map((group) => (
+                <Paper
+                  key={group.date}
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    borderColor: "divider",
+                    backgroundColor: "background.default",
+                  }}
+                >
+                  {/* Group Header */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      mb: 2,
+                      flexWrap: "wrap",
+                      gap: 1.5,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 2,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Typography
+                        variant="subtitle1"
+                        sx={{ fontWeight: "bold" }}
+                      >
+                        {formatGroupHeaderDate(group.date)}
+                      </Typography>
+                      {getExpirationBadge(group.date)}
+                    </Box>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{ fontWeight: "bold", color: "text.primary" }}
+                    >
+                      Secured: {formatCurrency(group.totalCash)}
+                    </Typography>
+                  </Box>
+
+                  {/* Group Positions Table */}
+                  <TableContainer
+                    component={Paper}
+                    elevation={0}
+                    variant="outlined"
+                  >
+                    <Table size="small">
+                      <TableHead sx={{ backgroundColor: "action.hover" }}>
+                        <TableRow>
+                          <TableCell>
+                            <strong>Symbol</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Strike Price</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Contracts</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Current Price</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Secured Cash</strong>
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {group.positions.map((pos, pIndex) => (
+                          <TableRow
+                            key={`${pos.symbol}-${pIndex}`}
+                            sx={{
+                              "&:last-child td, &:last-child th": { border: 0 },
+                            }}
+                          >
+                            <TableCell component="th" scope="row">
+                              <strong>{pos.symbol}</strong>
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(pos.strikePrice)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {pos.totalOptionContracts}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(pos.currentPrice)}
+                            </TableCell>
+                            <TableCell align="right">
+                              <strong>
+                                {formatCurrency(pos.cashRequired)}
+                              </strong>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              ))}
+            </Box>
           </Box>
         );
       })()}
