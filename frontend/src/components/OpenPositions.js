@@ -387,9 +387,6 @@ function OpenPositions() {
         const individualCSPs = [];
 
         positions.forEach((position) => {
-          // Only check positions that have active options and no stock shares
-          if (position.totalShares > 0) return;
-
           const contractsByOptionSymbol = {};
 
           if (position.transactions && Array.isArray(position.transactions)) {
