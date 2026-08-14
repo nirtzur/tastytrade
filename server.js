@@ -615,6 +615,9 @@ app.get("/api/trading-data/refresh", authenticate, async (req, res) => {
   try {
     logInfo("Starting analysis refresh");
 
+    // Clear prior analysis rows before processing the latest run so stale data does not remain.
+    await AnalysisResult.destroy({ where: {}, truncate: true });
+
     // Generate unique session ID for this analysis
     const sessionId = `analysis_${Date.now()}_${Math.random()
       .toString(36)
@@ -706,6 +709,8 @@ app.get("/api/trading-data/refresh", authenticate, async (req, res) => {
 app.post("/api/trading-data/refresh", authenticate, async (req, res) => {
   try {
     logInfo("Starting analysis refresh (legacy endpoint)");
+    await AnalysisResult.destroy({ where: {}, truncate: true });
+
     // Get symbols
     const sp500Symbols = await getSP500Symbols();
     const etfSymbols = getSectorETFs();

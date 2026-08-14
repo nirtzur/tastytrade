@@ -90,13 +90,13 @@ async function getDaysToEarnings(symbol) {
       await sleep(1000);
 
       const today = new Date();
-      const threeMonthsLater = new Date();
-      threeMonthsLater.setMonth(today.getMonth() + 3);
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(today.getMonth() - 6);
+      const oneYearLater = new Date();
+      oneYearLater.setFullYear(today.getFullYear() + 1);
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(today.getFullYear() - 1);
 
-      const from = sixMonthsAgo.toISOString().split("T")[0];
-      const to = threeMonthsLater.toISOString().split("T")[0];
+      const from = oneYearAgo.toISOString().split("T")[0];
+      const to = oneYearLater.toISOString().split("T")[0];
 
       const earnings = await new Promise((resolve, reject) => {
         finnhubClient.earningsCalendar(
