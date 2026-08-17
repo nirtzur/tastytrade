@@ -10,6 +10,9 @@ const {
   isWeeklyOptionCandidate,
   calculateDaysBetweenDates,
 } = require("../Analyze/index");
+const {
+  getEffectiveSelectedDate,
+} = require("../frontend/src/components/analysisTableUtils");
 
 test("uses percentage-based max spread when MAX_STOCK_SPREAD_PCT is provided", () => {
   assert.equal(resolveMaxStockSpread(100, { MAX_STOCK_SPREAD_PCT: "0.02" }), 2);
@@ -92,4 +95,21 @@ test("only treats option expirations within the weekly window as valid candidate
     false,
   );
   assert.equal(isWeeklyOptionCandidate(null, now), false);
+});
+
+test("falls back to the latest valid analysis date if the current selected date is stale", () => {
+  const data = [
+    { analyzed_at: "2026-01-02T12:00:00Z" },
+    { analyzed_at: "2026-01-04T12:00:00Z" },
+  ];
+
+  const selectedDate = {
+    format: (pattern) => {
+      if (pattern === "YYYY-MM-DD") return "2026-01-03";
+      return "2026-01-03T00:00:00Z";
+    },
+  };
+
+  const effectiveDate = getEffectiveSelectedDate(data, selectedDate);
+  assert.equal(effectiveDate.format("YYYY-MM-DD"), "2026-01-04");
 });

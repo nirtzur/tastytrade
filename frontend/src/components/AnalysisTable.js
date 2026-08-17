@@ -17,6 +17,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import client from "../api/client";
+import { getEffectiveSelectedDate } from "./analysisTableUtils";
 
 const excludedStatusesConst = {
   LOW_STOCK_PRICE: true,
@@ -114,15 +115,24 @@ const AnalysisTable = () => {
       const { data } = await client.get("/api/trading-data");
       if (Array.isArray(data)) {
         setRawData(data);
+        const nextSelectedDate = getEffectiveSelectedDate(data, selectedDate);
+        if (nextSelectedDate && !nextSelectedDate.isSame(selectedDate)) {
+          setSelectedDate(nextSelectedDate);
+        }
       }
     } catch (err) {
       console.error("Failed to refresh live analysis table:", err);
     }
-  }, []);
+  }, [selectedDate]);
 
   const applyFilters = useCallback(
     (data) => {
       if (!data.length) return [];
+
+      const effectiveSelectedDate = getEffectiveSelectedDate(
+        data,
+        selectedDate,
+      );
 
       let filtered = data.filter((row) => {
         if (!row.option_expiration_date || !row.analyzed_at) return false;
@@ -147,11 +157,15 @@ const AnalysisTable = () => {
       }
 
       // Then apply date filter
-      const filterDate = selectedDate || dayjs();
+      if (!effectiveSelectedDate) {
+        return filtered;
+      }
+
       return filtered.filter((row) => {
         const analyzedDate = dayjs(row.analyzed_at);
         return (
-          analyzedDate.format("YYYY-MM-DD") === filterDate.format("YYYY-MM-DD")
+          analyzedDate.format("YYYY-MM-DD") ===
+          effectiveSelectedDate.format("YYYY-MM-DD")
         );
       });
     },
@@ -172,14 +186,14 @@ const AnalysisTable = () => {
         if (Array.isArray(data)) {
           setRawData(data);
 
-          // Find the latest date
-          if (data.length > 0 && !selectedDate) {
-            const latestDate = data.reduce((latest, current) => {
-              const currentDate = dayjs(current.analyzed_at);
-              return latest.isAfter(currentDate) ? latest : currentDate;
-            }, dayjs(data[0].analyzed_at));
-
-            setSelectedDate(latestDate);
+          if (data.length > 0) {
+            const nextSelectedDate = getEffectiveSelectedDate(
+              data,
+              selectedDate,
+            );
+            if (nextSelectedDate && !nextSelectedDate.isSame(selectedDate)) {
+              setSelectedDate(nextSelectedDate);
+            }
           }
         } else {
           throw new Error("Invalid analysis data format");
@@ -265,6 +279,16 @@ const AnalysisTable = () => {
                 client.get("/api/trading-data").then(({ data }) => {
                   if (Array.isArray(data)) {
                     setRawData(data);
+                    const nextSelectedDate = getEffectiveSelectedDate(
+                      data,
+                      selectedDate,
+                    );
+                    if (
+                      nextSelectedDate &&
+                      !nextSelectedDate.isSame(selectedDate)
+                    ) {
+                      setSelectedDate(nextSelectedDate);
+                    }
                   }
                 });
                 break;
@@ -377,6 +401,16 @@ const AnalysisTable = () => {
             client.get("/api/trading-data").then(({ data: tableData }) => {
               if (Array.isArray(tableData)) {
                 setRawData(tableData);
+                const nextSelectedDate = getEffectiveSelectedDate(
+                  tableData,
+                  selectedDate,
+                );
+                if (
+                  nextSelectedDate &&
+                  !nextSelectedDate.isSame(selectedDate)
+                ) {
+                  setSelectedDate(nextSelectedDate);
+                }
               }
             });
             break;
