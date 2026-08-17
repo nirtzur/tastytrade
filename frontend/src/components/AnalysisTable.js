@@ -17,7 +17,6 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import client from "../api/client";
-import { getEffectiveSelectedDate } from "./analysisTableUtils";
 
 const excludedStatusesConst = {
   LOW_STOCK_PRICE: true,
@@ -31,7 +30,7 @@ const AnalysisTable = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [selectedStatuses, setSelectedStatuses] = useState("all");
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(() => dayjs());
   const [progressInfo, setProgressInfo] = useState(null);
 
   const openYahooFinance = useCallback((symbol) => {
@@ -112,13 +111,12 @@ const AnalysisTable = () => {
 
   const refreshLiveTableData = useCallback(async () => {
     try {
-      const { data } = await client.get("/api/trading-data");
+      const requestDate = selectedDate || dayjs();
+      const { data } = await client.get("/api/trading-data", {
+        params: { date: requestDate.format("YYYY-MM-DD") },
+      });
       if (Array.isArray(data)) {
         setRawData(data);
-        const nextSelectedDate = getEffectiveSelectedDate(data, selectedDate);
-        if (nextSelectedDate && !nextSelectedDate.isSame(selectedDate)) {
-          setSelectedDate(nextSelectedDate);
-        }
       }
     } catch (err) {
       console.error("Failed to refresh live analysis table:", err);
@@ -129,10 +127,7 @@ const AnalysisTable = () => {
     (data) => {
       if (!data.length) return [];
 
-      const effectiveSelectedDate = getEffectiveSelectedDate(
-        data,
-        selectedDate,
-      );
+      const filterDate = selectedDate || dayjs();
 
       let filtered = data.filter((row) => {
         if (!row.option_expiration_date || !row.analyzed_at) return false;
@@ -157,20 +152,15 @@ const AnalysisTable = () => {
       }
 
       // Then apply date filter
-      if (!effectiveSelectedDate) {
-        return filtered;
-      }
-
       return filtered.filter((row) => {
         const analyzedDate = dayjs(row.analyzed_at);
         return (
-          analyzedDate.format("YYYY-MM-DD") ===
-          effectiveSelectedDate.format("YYYY-MM-DD")
+          analyzedDate.format("YYYY-MM-DD") === filterDate.format("YYYY-MM-DD")
         );
       });
     },
     [selectedStatuses, selectedDate],
-  ); // Fetch initial data
+  );
   useEffect(() => {
     let mounted = true;
 
@@ -179,22 +169,15 @@ const AnalysisTable = () => {
 
       try {
         setLoading(true);
-        const { data } = await client.get("/api/trading-data");
+        const requestDate = selectedDate || dayjs();
+        const { data } = await client.get("/api/trading-data", {
+          params: { date: requestDate.format("YYYY-MM-DD") },
+        });
 
         if (!mounted) return;
 
         if (Array.isArray(data)) {
           setRawData(data);
-
-          if (data.length > 0) {
-            const nextSelectedDate = getEffectiveSelectedDate(
-              data,
-              selectedDate,
-            );
-            if (nextSelectedDate && !nextSelectedDate.isSame(selectedDate)) {
-              setSelectedDate(nextSelectedDate);
-            }
-          }
         } else {
           throw new Error("Invalid analysis data format");
         }
@@ -214,7 +197,7 @@ const AnalysisTable = () => {
     return () => {
       mounted = false;
     };
-  }, [selectedDate, transformData]);
+  }, [selectedDate]);
 
   // Check for existing progress state on component mount
   useEffect(() => {
@@ -279,16 +262,6 @@ const AnalysisTable = () => {
                 client.get("/api/trading-data").then(({ data }) => {
                   if (Array.isArray(data)) {
                     setRawData(data);
-                    const nextSelectedDate = getEffectiveSelectedDate(
-                      data,
-                      selectedDate,
-                    );
-                    if (
-                      nextSelectedDate &&
-                      !nextSelectedDate.isSame(selectedDate)
-                    ) {
-                      setSelectedDate(nextSelectedDate);
-                    }
                   }
                 });
                 break;
@@ -340,7 +313,7 @@ const AnalysisTable = () => {
     return () => {
       mounted = false;
     };
-  }, [refreshLiveTableData, selectedDate, transformData]);
+  }, [refreshLiveTableData, transformData]);
 
   // Apply filters to raw rows, then transform only the visible rows for rendering.
   useEffect(() => {
@@ -401,16 +374,6 @@ const AnalysisTable = () => {
             client.get("/api/trading-data").then(({ data: tableData }) => {
               if (Array.isArray(tableData)) {
                 setRawData(tableData);
-                const nextSelectedDate = getEffectiveSelectedDate(
-                  tableData,
-                  selectedDate,
-                );
-                if (
-                  nextSelectedDate &&
-                  !nextSelectedDate.isSame(selectedDate)
-                ) {
-                  setSelectedDate(nextSelectedDate);
-                }
               }
             });
             break;
@@ -517,8 +480,8 @@ const AnalysisTable = () => {
           <LocalizationProvider dateAdapter={AdapterDayjs}>
             <DatePicker
               label="Analysis Date"
-              value={selectedDate}
-              onChange={setSelectedDate}
+              value={selectedDate ?? dayjs()}
+              onChange={(value) => setSelectedDate(value ?? dayjs())}
               slotProps={{ textField: { size: "small", fullWidth: true } }}
               sx={{ minWidth: 200, flex: 1 }}
             />

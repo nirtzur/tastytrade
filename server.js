@@ -444,28 +444,34 @@ app.get("/api/trading-data", authenticate, async (req, res) => {
   try {
     logInfo("Fetching trading data from database");
 
-    // Get the maximum analyzed_at date (date only, not timestamp)
-    const maxDateResult = await AnalysisResult.findOne({
-      attributes: [
-        [
-          sequelize.Sequelize.fn(
-            "DATE",
-            sequelize.Sequelize.fn(
-              "MAX",
-              sequelize.Sequelize.col("analyzed_at"),
-            ),
-          ),
-          "max_date",
-        ],
-      ],
-      raw: true,
-    });
+    const requestedDate = req.query.date;
+    const targetDate = requestedDate || null;
 
-    if (!maxDateResult || !maxDateResult.max_date) {
-      return res.json([]);
+    let dateForQuery = targetDate;
+    if (!dateForQuery) {
+      const maxDateResult = await AnalysisResult.findOne({
+        attributes: [
+          [
+            sequelize.Sequelize.fn(
+              "DATE",
+              sequelize.Sequelize.fn(
+                "MAX",
+                sequelize.Sequelize.col("analyzed_at"),
+              ),
+            ),
+            "max_date",
+          ],
+        ],
+        raw: true,
+      });
+
+      if (!maxDateResult || !maxDateResult.max_date) {
+        return res.json([]);
+      }
+
+      dateForQuery = maxDateResult.max_date;
     }
 
-    // Fetch all symbols that match the maximum date (by date, not timestamp)
     const results = await AnalysisResult.findAll({
       where: {
         [sequelize.Sequelize.Op.and]: [
@@ -474,7 +480,7 @@ app.get("/api/trading-data", authenticate, async (req, res) => {
               "DATE",
               sequelize.Sequelize.col("analyzed_at"),
             ),
-            maxDateResult.max_date,
+            dateForQuery,
           ),
         ],
       },
