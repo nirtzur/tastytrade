@@ -340,7 +340,7 @@ const AnalysisTable = () => {
     return () => {
       mounted = false;
     };
-  }, [refreshLiveTableData, transformData]);
+  }, [refreshLiveTableData, selectedDate, transformData]);
 
   // Apply filters to raw rows, then transform only the visible rows for rendering.
   useEffect(() => {
