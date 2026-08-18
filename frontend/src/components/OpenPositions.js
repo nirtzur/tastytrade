@@ -333,6 +333,15 @@ function OpenPositions() {
                         size="small"
                         variant="outlined"
                       />
+                    ) : position.totalShares > 0 &&
+                      position.totalOptionContracts > 0 &&
+                      position.optionType === "C" ? (
+                      <Chip
+                        label="Covered Call"
+                        color="secondary"
+                        size="small"
+                        variant="outlined"
+                      />
                     ) : (
                       <Chip
                         label="Open"
@@ -667,6 +676,337 @@ function OpenPositions() {
                             <TableCell align="right">
                               <strong>
                                 {formatCurrency(pos.cashRequired)}
+                              </strong>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              ))}
+            </Box>
+          </Box>
+        );
+      })()}
+
+      {/* Covered Calls Summary */}
+      {(() => {
+        // Extract individual active Covered Call contract positions from the transaction history of positions
+        const individualCCs = [];
+
+        positions.forEach((position) => {
+          const contractsByOptionSymbol = {};
+
+          if (position.transactions && Array.isArray(position.transactions)) {
+            position.transactions.forEach((tx) => {
+              if (tx.instrument_type !== "Equity Option") return;
+              const optSymbol = tx.symbol;
+              contractsByOptionSymbol[optSymbol] ??= {
+                symbol: optSymbol,
+                netContracts: 0,
+              };
+
+              const quantity = Math.abs(parseFloat(tx.quantity) || 0);
+              const isOpening =
+                tx.action === "Sell to Open" || tx.action === "Buy to Open";
+              if (isOpening) {
+                contractsByOptionSymbol[optSymbol].netContracts += quantity;
+              } else {
+                contractsByOptionSymbol[optSymbol].netContracts -= quantity;
+              }
+            });
+          }
+
+          // Generate individual Covered Call objects
+          Object.values(contractsByOptionSymbol).forEach((opt) => {
+            if (opt.netContracts <= 0) return;
+
+            // Match OCC format (e.g. "MRNA  260814C00056000")
+            const match = opt.symbol.match(/^(.+?)\s+(\d{6})([CP])(\d{8})$/);
+            if (!match) return;
+
+            const [, underlying, dateStr, type, strikeStr] = match;
+            if (type !== "C") return; // Only Calls for Covered Calls
+
+            const strikePrice = parseFloat(strikeStr) / 1000;
+            const year = "20" + dateStr.substring(0, 2);
+            const month = dateStr.substring(2, 4);
+            const day = dateStr.substring(4, 6);
+            const expirationDate = `${year}-${month}-${day}`;
+
+            individualCCs.push({
+              symbol: opt.symbol,
+              underlying,
+              strikePrice,
+              totalOptionContracts: opt.netContracts,
+              optionExpirationDate: expirationDate,
+              currentPrice: position.currentPrice,
+            });
+          });
+        });
+
+        if (individualCCs.length === 0) return null;
+
+        const totalSharesCovered = individualCCs.reduce((sum, item) => {
+          return sum + item.totalOptionContracts * 100;
+        }, 0);
+
+        const totalNotionalValue = individualCCs.reduce((sum, item) => {
+          return sum + item.totalOptionContracts * item.strikePrice * 100;
+        }, 0);
+
+        // Group by expiration date
+        const groupedByWeek = {};
+
+        individualCCs.forEach((item) => {
+          const dateStr = item.optionExpirationDate || "Unknown";
+          if (!groupedByWeek[dateStr]) {
+            groupedByWeek[dateStr] = {
+              date: dateStr,
+              positions: [],
+              totalShares: 0,
+              totalNotional: 0,
+            };
+          }
+          const sharesCovered = item.totalOptionContracts * 100;
+          const notionalValue =
+            item.totalOptionContracts * item.strikePrice * 100;
+          groupedByWeek[dateStr].positions.push({
+            ...item,
+            sharesCovered,
+            notionalValue,
+          });
+          groupedByWeek[dateStr].totalShares += sharesCovered;
+          groupedByWeek[dateStr].totalNotional += notionalValue;
+        });
+
+        // Sort groups by date ascending (closest expiration first)
+        const sortedGroups = Object.values(groupedByWeek).sort((a, b) => {
+          if (a.date === "Unknown") return 1;
+          if (b.date === "Unknown") return -1;
+          return a.date.localeCompare(b.date);
+        });
+
+        const getExpirationBadge = (dateStr) => {
+          if (dateStr === "Unknown") {
+            return (
+              <Chip
+                label="Unknown Expiration"
+                size="small"
+                variant="outlined"
+              />
+            );
+          }
+
+          const exp = dayjs(dateStr);
+          const today = dayjs().startOf("day");
+          const diffDays = exp.diff(today, "day");
+
+          if (diffDays === 0) {
+            return (
+              <Chip
+                label="Expiring Tonight"
+                color="error"
+                size="small"
+                variant="filled"
+                sx={{ fontWeight: "bold" }}
+              />
+            );
+          } else if (diffDays === 1) {
+            return (
+              <Chip
+                label="Expiring Tomorrow"
+                color="warning"
+                size="small"
+                variant="filled"
+                sx={{ fontWeight: "bold" }}
+              />
+            );
+          } else if (diffDays < 0) {
+            return (
+              <Chip
+                label={`Expired ${Math.abs(diffDays)}d ago`}
+                color="default"
+                size="small"
+                variant="outlined"
+              />
+            );
+          } else {
+            return (
+              <Chip
+                label={`${diffDays} days left`}
+                color="primary"
+                size="small"
+                variant="outlined"
+              />
+            );
+          }
+        };
+
+        const formatGroupHeaderDate = (dateStr) => {
+          if (dateStr === "Unknown") return "Unknown Expiration";
+          return dayjs(dateStr).format("dddd, MMMM D, YYYY");
+        };
+
+        return (
+          <Box
+            sx={{
+              padding: 3,
+              marginTop: 4,
+              backgroundColor: "background.paper",
+              borderRadius: 2,
+              boxShadow: 2,
+              border: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                mb: 3,
+                flexWrap: "wrap",
+                gap: 1.5,
+              }}
+            >
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Covered Calls Summary
+              </Typography>
+              <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                <Typography
+                  variant="subtitle1"
+                  color="text.secondary"
+                  sx={{ fontWeight: "bold" }}
+                >
+                  Total Covered Shares: {totalSharesCovered.toLocaleString()}
+                </Typography>
+                <Typography
+                  variant="h6"
+                  color="primary.main"
+                  sx={{ fontWeight: "bold" }}
+                >
+                  Total Notional Value: {formatCurrency(totalNotionalValue)}
+                </Typography>
+              </Box>
+            </Box>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Based on {individualCCs.length} covered call position
+              {individualCCs.length !== 1 ? "s" : ""}
+            </Typography>
+
+            {/* Weekly Breakdown Grid/Stack */}
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {sortedGroups.map((group) => (
+                <Paper
+                  key={group.date}
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    borderColor: "divider",
+                    backgroundColor: "background.default",
+                  }}
+                >
+                  {/* Group Header */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      mb: 2,
+                      flexWrap: "wrap",
+                      gap: 1.5,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 2,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Typography
+                        variant="subtitle1"
+                        sx={{ fontWeight: "bold" }}
+                      >
+                        {formatGroupHeaderDate(group.date)}
+                      </Typography>
+                      {getExpirationBadge(group.date)}
+                    </Box>
+                    <Box sx={{ display: "flex", gap: 3 }}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{ fontWeight: "bold", color: "text.secondary" }}
+                      >
+                        Covered Shares: {group.totalShares.toLocaleString()}
+                      </Typography>
+                      <Typography
+                        variant="subtitle1"
+                        sx={{ fontWeight: "bold", color: "text.primary" }}
+                      >
+                        Notional: {formatCurrency(group.totalNotional)}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Group Positions Table */}
+                  <TableContainer
+                    component={Paper}
+                    elevation={0}
+                    variant="outlined"
+                  >
+                    <Table size="small">
+                      <TableHead sx={{ backgroundColor: "action.hover" }}>
+                        <TableRow>
+                          <TableCell>
+                            <strong>Symbol</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Strike Price</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Contracts</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Current Price</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Covered Shares</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>Notional Value</strong>
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {group.positions.map((pos, pIndex) => (
+                          <TableRow
+                            key={`${pos.symbol}-${pIndex}`}
+                            sx={{
+                              "&:last-child td, &:last-child th": { border: 0 },
+                            }}
+                          >
+                            <TableCell component="th" scope="row">
+                              <strong>{pos.symbol}</strong>
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(pos.strikePrice)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {pos.totalOptionContracts}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(pos.currentPrice)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {pos.sharesCovered.toLocaleString()}
+                            </TableCell>
+                            <TableCell align="right">
+                              <strong>
+                                {formatCurrency(pos.notionalValue)}
                               </strong>
                             </TableCell>
                           </TableRow>
