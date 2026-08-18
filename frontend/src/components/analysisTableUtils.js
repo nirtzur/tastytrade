@@ -23,11 +23,19 @@ function getLatestAnalyzedDate(data) {
 
 function getEffectiveSelectedDate(data, selectedDate) {
   const normalizedSelected = normalizeDate(selectedDate);
-  if (normalizedSelected) {
-    return normalizedSelected;
+  if (normalizedSelected && Array.isArray(data) && data.length > 0) {
+    const formattedSelected = normalizedSelected.format("YYYY-MM-DD");
+    const hasData = data.some((row) => {
+      const rowDate = normalizeDate(row?.analyzed_at);
+      return rowDate && rowDate.format("YYYY-MM-DD") === formattedSelected;
+    });
+    if (hasData) {
+      return normalizedSelected;
+    }
+    return getLatestAnalyzedDate(data) || normalizedSelected;
   }
 
-  return getLatestAnalyzedDate(data) || dayjs();
+  return getLatestAnalyzedDate(data) || normalizedSelected || dayjs();
 }
 
 module.exports = {

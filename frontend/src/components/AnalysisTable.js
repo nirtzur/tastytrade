@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import DataTable from "./DataTable";
 import {
   Box,
@@ -17,6 +23,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import client from "../api/client";
+import { getEffectiveSelectedDate } from "./analysisTableUtils";
 
 const excludedStatusesConst = {
   LOW_STOCK_PRICE: true,
@@ -30,8 +37,9 @@ const AnalysisTable = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [selectedStatuses, setSelectedStatuses] = useState("all");
-  const [selectedDate, setSelectedDate] = useState(() => dayjs());
+  const [selectedDate, setSelectedDate] = useState(null);
   const [progressInfo, setProgressInfo] = useState(null);
+  const lastFetchedDateRef = useRef(null);
 
   const openYahooFinance = useCallback((symbol) => {
     window.open(
@@ -111,12 +119,16 @@ const AnalysisTable = () => {
 
   const refreshLiveTableData = useCallback(async () => {
     try {
-      const requestDate = selectedDate || dayjs();
-      const { data } = await client.get("/api/trading-data", {
-        params: { date: requestDate.format("YYYY-MM-DD") },
-      });
+      const params = {};
+      if (selectedDate) {
+        params.date = selectedDate.format("YYYY-MM-DD");
+      }
+      const { data } = await client.get("/api/trading-data", { params });
       if (Array.isArray(data)) {
         setRawData(data);
+        const effectiveDate = getEffectiveSelectedDate(data, selectedDate);
+        lastFetchedDateRef.current = effectiveDate.format("YYYY-MM-DD");
+        setSelectedDate(effectiveDate);
       }
     } catch (err) {
       console.error("Failed to refresh live analysis table:", err);
@@ -127,18 +139,9 @@ const AnalysisTable = () => {
     (data) => {
       if (!data.length) return [];
 
-      const filterDate = selectedDate || dayjs();
+      const filterDate = getEffectiveSelectedDate(data, selectedDate);
 
-      let filtered = data.filter((row) => {
-        if (!row.option_expiration_date || !row.analyzed_at) return false;
-        const expirationDate = new Date(row.option_expiration_date);
-        const analyzedDate = new Date(row.analyzed_at);
-        const diffDays = Math.round(
-          (expirationDate.getTime() - analyzedDate.getTime()) /
-            (1000 * 60 * 60 * 24),
-        );
-        return diffDays > 3 && diffDays <= 10;
-      });
+      let filtered = data;
 
       // First apply status filter
       if (selectedStatuses !== "all") {
@@ -161,23 +164,34 @@ const AnalysisTable = () => {
     },
     [selectedStatuses, selectedDate],
   );
+
   useEffect(() => {
     let mounted = true;
 
     const fetchAnalysisData = async () => {
       if (!mounted) return;
 
+      const dateStr = selectedDate ? selectedDate.format("YYYY-MM-DD") : null;
+      if (dateStr && lastFetchedDateRef.current === dateStr) {
+        return;
+      }
+
       try {
         setLoading(true);
-        const requestDate = selectedDate || dayjs();
-        const { data } = await client.get("/api/trading-data", {
-          params: { date: requestDate.format("YYYY-MM-DD") },
-        });
+        setError(null);
+        const params = {};
+        if (selectedDate) {
+          params.date = dateStr;
+        }
+        const { data } = await client.get("/api/trading-data", { params });
 
         if (!mounted) return;
 
         if (Array.isArray(data)) {
           setRawData(data);
+          const effectiveDate = getEffectiveSelectedDate(data, selectedDate);
+          lastFetchedDateRef.current = effectiveDate.format("YYYY-MM-DD");
+          setSelectedDate(effectiveDate);
         } else {
           throw new Error("Invalid analysis data format");
         }
