@@ -791,21 +791,17 @@ app.get("/api/auth/check", authenticate, (req, res) => {
   res.json({ authenticated: true });
 });
 
-// Production routing - Static files
-if (process.env.NODE_ENV === "production") {
-  const staticOptions = {
-    maxAge: "1h",
-    setHeaders: (res, path) => {
-      if (path.endsWith(".html")) {
-        res.setHeader("Cache-Control", "no-cache");
-      }
-    },
-  };
+// Serve Static files (always enabled so standard local startup serves frontend)
+const staticOptions = {
+  maxAge: "1h",
+  setHeaders: (res, path) => {
+    if (path.endsWith(".html")) {
+      res.setHeader("Cache-Control", "no-cache");
+    }
+  },
+};
 
-  app.use(
-    express.static(path.join(__dirname, "frontend/build"), staticOptions),
-  );
-}
+app.use(express.static(path.join(__dirname, "frontend/build"), staticOptions));
 
 const PORT = process.env.PORT || 3001;
 
@@ -989,34 +985,88 @@ async function fetchAggregatedPositions() {
     }
     position.realizedPL = realizedPL;
 
+    // Calculate net contracts for each specific option symbol to find the currently open option(s)
+    const optionContractsMap = {};
+    for (const tx of position.transactions) {
+      if (tx.instrument_type === "Equity Option") {
+        optionContractsMap[tx.symbol] ??= 0;
+        const qty = Math.abs(parseFloat(tx.quantity) || 0);
+        if (isOpeningTransaction(tx)) {
+          optionContractsMap[tx.symbol] += qty;
+        } else {
+          optionContractsMap[tx.symbol] -= qty;
+        }
+      }
+    }
+
+    // Find option symbols that still have net contracts > 0
+    const openOptionSymbols = Object.keys(optionContractsMap).filter(
+      (optSymbol) => optionContractsMap[optSymbol] > 0.001,
+    );
+
     let strikePrice = null;
     let optionType = null;
     let latestOptionDate = null;
     let optionExpirationDate = null;
 
-    for (const tx of position.transactions) {
-      if (tx.instrument_type === "Equity Option") {
-        const txDate = new Date(tx.executed_at);
-        if (!latestOptionDate || txDate > latestOptionDate) {
-          const match = tx.symbol.match(/(\d{6})([CP])(\d{8})$/);
-          if (match) {
-            optionType = match[2];
-            const strikePart = match[3];
-            const strikeValue = parseFloat(strikePart) / 1000;
-            if (strikeValue > 0) {
-              strikePrice = strikeValue;
-              latestOptionDate = txDate;
+    if (openOptionSymbols.length > 0) {
+      // Prioritize currently open options
+      for (const tx of position.transactions) {
+        if (
+          tx.instrument_type === "Equity Option" &&
+          openOptionSymbols.includes(tx.symbol)
+        ) {
+          const txDate = new Date(tx.executed_at);
+          if (!latestOptionDate || txDate > latestOptionDate) {
+            const match = tx.symbol.match(/(\d{6})([CP])(\d{8})$/);
+            if (match) {
+              optionType = match[2];
+              const strikePart = match[3];
+              const strikeValue = parseFloat(strikePart) / 1000;
+              if (strikeValue > 0) {
+                strikePrice = strikeValue;
+                latestOptionDate = txDate;
 
-              const expDateStr = match[1];
-              const year = "20" + expDateStr.substring(0, 2);
-              const month = expDateStr.substring(2, 4);
-              const day = expDateStr.substring(4, 6);
-              optionExpirationDate = `${year}-${month}-${day}`;
+                const expDateStr = match[1];
+                const year = "20" + expDateStr.substring(0, 2);
+                const month = expDateStr.substring(2, 4);
+                const day = expDateStr.substring(4, 6);
+                optionExpirationDate = `${year}-${month}-${day}`;
+              }
             }
           }
         }
       }
     }
+
+    // Fallback: if no currently open option found (e.g. for a fully closed position), use the latest option transaction as before
+    if (!strikePrice) {
+      latestOptionDate = null;
+      for (const tx of position.transactions) {
+        if (tx.instrument_type === "Equity Option") {
+          const txDate = new Date(tx.executed_at);
+          if (!latestOptionDate || txDate > latestOptionDate) {
+            const match = tx.symbol.match(/(\d{6})([CP])(\d{8})$/);
+            if (match) {
+              optionType = match[2];
+              const strikePart = match[3];
+              const strikeValue = parseFloat(strikePart) / 1000;
+              if (strikeValue > 0) {
+                strikePrice = strikeValue;
+                latestOptionDate = txDate;
+
+                const expDateStr = match[1];
+                const year = "20" + expDateStr.substring(0, 2);
+                const month = expDateStr.substring(2, 4);
+                const day = expDateStr.substring(4, 6);
+                optionExpirationDate = `${year}-${month}-${day}`;
+              }
+            }
+          }
+        }
+      }
+    }
+
     position.strikePrice = strikePrice;
     position.optionType = optionType;
     position.optionExpirationDate = optionExpirationDate;
@@ -1273,10 +1323,117 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       });
     }
 
-    // 1. Fetch current positions
+    // 1. Fetch current positions and balances
     const positions = await fetchAggregatedPositions();
+    const accountBalance = await getAccountBalance();
 
-    // Filter for open Cash Secured Puts
+    const rawNetLiquidity =
+      parseFloat(accountBalance["net-liquidating-value"]) || 0;
+    const rawCashBalance = parseFloat(accountBalance["cash-balance"]) || 0;
+    const rawBuyingPower = parseFloat(accountBalance["buying-power"]) || 0;
+
+    // Filter and classify open positions
+    const openPositionsList = positions.filter((p) => p.isOpen);
+
+    const openCSPsList = [];
+    const openCCsList = [];
+
+    openPositionsList.forEach((p) => {
+      const currentPrice =
+        p.currentPrice !== null && p.currentPrice !== undefined
+          ? parseFloat(p.currentPrice)
+          : null;
+      const strikePrice =
+        p.strikePrice !== null && p.strikePrice !== undefined
+          ? parseFloat(p.strikePrice)
+          : null;
+      const contracts = parseFloat(p.totalOptionContracts) || 0;
+      const shares = parseFloat(p.totalShares) || 0;
+
+      if (p.optionType === "P" && shares === 0 && contracts > 0) {
+        // Cash Secured Put
+        let isITM = false;
+        let status = "Unknown";
+        if (currentPrice !== null && strikePrice !== null) {
+          isITM = currentPrice <= strikePrice;
+          status = isITM ? "ITM" : "OTM";
+        }
+        const cashRequirement = strikePrice ? strikePrice * contracts * 100 : 0;
+        openCSPsList.push({
+          symbol: p.symbol,
+          currentPrice,
+          strikePrice,
+          contracts,
+          isITM,
+          status,
+          cashRequirement,
+          expirationDate: p.optionExpirationDate,
+        });
+      } else if (p.optionType === "C" && shares > 0 && contracts > 0) {
+        // Covered Call
+        let isITM = false;
+        let status = "Unknown";
+        if (currentPrice !== null && strikePrice !== null) {
+          isITM = currentPrice >= strikePrice;
+          status = isITM ? "ITM" : "OTM";
+        }
+        const potentialProceeds = strikePrice
+          ? strikePrice * contracts * 100
+          : 0;
+        openCCsList.push({
+          symbol: p.symbol,
+          currentPrice,
+          strikePrice,
+          contracts,
+          isITM,
+          status,
+          potentialProceeds,
+          expirationDate: p.optionExpirationDate,
+          shares,
+        });
+      }
+    });
+
+    let totalCspCash = 0;
+    let otmCspCash = 0;
+    let itmCspCash = 0;
+
+    openCSPsList.forEach((csp) => {
+      totalCspCash += csp.cashRequirement;
+      if (csp.isITM) {
+        itmCspCash += csp.cashRequirement;
+      } else {
+        otmCspCash += csp.cashRequirement;
+      }
+    });
+
+    let totalCcProceeds = 0;
+    let itmCcProceeds = 0;
+    let otmCcValue = 0;
+
+    openCCsList.forEach((cc) => {
+      if (cc.isITM) {
+        itmCcProceeds += cc.potentialProceeds;
+      } else {
+        otmCcValue += cc.potentialProceeds;
+      }
+    });
+
+    // Calculations based on user rules:
+    // Starting with cash from tastytrade: rawCashBalance
+    // Plus: ITM CC strike proceeds (shares will be sold at strike price, generating cash) -> itmCcProceeds
+    // Minus: ITM CSP strike requirements (cash needed to buy assigned shares) -> itmCspCash
+    // OTM CSPs will just expire and release their cash allocation (already physically in the cash balance) -> otmCspCash
+    // OTM CCs will expire worthless and asset value is NOT used as liquidity -> $0 cash change
+    const projectedCash = rawCashBalance - itmCspCash + itmCcProceeds;
+
+    // Use projectedCash (Projected Net Liquidity) as the baseline for new allocations
+    const netLiquidity = projectedCash;
+
+    // Each allocation (for a single symbol) must not exceed 8% of the Raw Net Liquidating Value from Tastytrade
+    const maxAllocationPerSymbol = rawNetLiquidity * 0.08;
+
+    // Filter for open Cash Secured Puts to preserve existing prompt references if any
     const openCSPs = positions.filter(
       (p) =>
         p.isOpen &&
@@ -1284,10 +1441,6 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
         p.totalShares === 0 &&
         p.totalOptionContracts > 0,
     );
-
-    const accountBalance = await getAccountBalance();
-    const netLiquidity =
-      parseFloat(accountBalance["net-liquidating-value"]) || 0;
 
     // 2. Fetch latest analysis
     // Get the maximum analyzed_at date
@@ -1361,17 +1514,80 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       return false;
     });
 
-    const maxAllocationPerSymbol = netLiquidity * 0.08;
-
     // 3. Consult Gemini
     const genAI = new GoogleGenerativeAI(token);
 
     const prompt = `
       I need your help to allocate my portfolio for Cash Secured Puts.
       
-      Current Status:
-      - Current Net Liquidity: $${netLiquidity.toFixed(2)}
-      - Current Open CSP Positions: ${openCSPs
+      Current Account Balances from Tastytrade:
+      - Raw Net Liquidating Value: $${rawNetLiquidity.toFixed(2)}
+      - Raw Cash Balance: $${rawCashBalance.toFixed(2)}
+      - Raw Buying Power: $${rawBuyingPower.toFixed(2)}
+
+      Detailed Cash & Option Expiration Breakdown:
+      1. Starting Cash Balance: $${rawCashBalance.toFixed(2)}
+         - This cash is used to cover Cash Secured Puts.
+         - Note: It is possible that margin was used, so cash may be less than total CSP requirements, or some cash may be reserved.
+      
+      2. Cash Secured Puts (CSPs) expiring Out of the Money (OTM):
+         - These puts (Strike < Current Price) will just expire worthless. Their cash allocation is available for new CSP positions.
+         - Total OTM CSP cash collateral: $${otmCspCash.toFixed(2)}
+         - OTM CSPs list: ${
+           openCSPsList
+             .filter((c) => !c.isITM)
+             .map(
+               (c) =>
+                 `${c.symbol} (Strike $${c.strikePrice}, Underlyer Price $${c.currentPrice !== null ? c.currentPrice.toFixed(2) : "N/A"}, Expiration ${c.expirationDate || "N/A"}, Cash Collateral $${c.cashRequirement.toFixed(2)})`,
+             )
+             .join(", ") || "None"
+         }
+      
+      3. Cash Secured Puts (CSPs) expiring In the Money (ITM):
+         - These puts (Strike >= Current Price) will expire in the money. Liquid cash is required to cover the purchase of underlying shares at the strike price.
+         - Total ITM CSP cash required: $${itmCspCash.toFixed(2)}
+         - ITM CSPs list: ${
+           openCSPsList
+             .filter((c) => c.isITM)
+             .map(
+               (c) =>
+                 `${c.symbol} (Strike $${c.strikePrice}, Underlyer Price $${c.currentPrice !== null ? c.currentPrice.toFixed(2) : "N/A"}, Expiration ${c.expirationDate || "N/A"}, Cash Required $${c.cashRequirement.toFixed(2)})`,
+             )
+             .join(", ") || "None"
+         }
+      
+      4. Covered Calls (CCs) expiring Out of the Money (OTM):
+         - These calls (Strike > Current Price) will expire worthless. You retain the underlying shares (allowing another CC write next week). The asset value is NOT used as part of liquid cash until actual expiration or when sold.
+         - Total OTM CC strike value (excluded from liquid cash): $${otmCcValue.toFixed(2)}
+         - OTM CCs list: ${
+           openCCsList
+             .filter((c) => !c.isITM)
+             .map(
+               (c) =>
+                 `${c.symbol} (Strike $${c.strikePrice}, Underlyer Price $${c.currentPrice !== null ? c.currentPrice.toFixed(2) : "N/A"}, Expiration ${c.expirationDate || "N/A"}, Asset Value at Strike $${c.potentialProceeds.toFixed(2)})`,
+             )
+             .join(", ") || "None"
+         }
+      
+      5. Covered Calls (CCs) expiring In the Money (ITM):
+         - These calls (Strike <= Current Price) will expire in the money. The underlying asset will be sold at the strike price, making the proceeds available as liquid cash upon expiration.
+         - Total ITM CC strike proceeds generated: $${itmCcProceeds.toFixed(2)}
+         - ITM CCs list: ${
+           openCCsList
+             .filter((c) => c.isITM)
+             .map(
+               (c) =>
+                 `${c.symbol} (Strike $${c.strikePrice}, Underlyer Price $${c.currentPrice !== null ? c.currentPrice.toFixed(2) : "N/A"}, Expiration ${c.expirationDate || "N/A"}, Cash Proceeds $${c.potentialProceeds.toFixed(2)})`,
+             )
+             .join(", ") || "None"
+         }
+
+      Projected Net Liquidity (Available Cash for New CSPs) Calculation:
+      - Formula: Projected Cash = Current Cash Balance - ITM CSP Cash Required + ITM CC Cash Generated
+      - Math: $${rawCashBalance.toFixed(2)} - $${itmCspCash.toFixed(2)} + $${itmCcProceeds.toFixed(2)} = $${netLiquidity.toFixed(2)}
+      - Projected Net Liquidity for New CSP Allocations: $${netLiquidity.toFixed(2)}
+
+      Current Open CSP Positions: ${openCSPs
         .map((p) => `${p.symbol} ($${p.strikePrice} Strike)`)
         .join(", ")}
 
@@ -1400,7 +1616,8 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
 
       Task:
       Recommend a list of new allocations.
-      - Each allocation (for a single symbol) must not exceed 8% of my Net Liquidity, which equals $${maxAllocationPerSymbol.toFixed(2)}.
+      - **CRITICAL**: Use the calculated **Projected Net Liquidity ($${netLiquidity.toFixed(2)})** as the base for the total allocation budget. The sum of all recommended allocations must not exceed $${netLiquidity.toFixed(2)}.
+      - **CRITICAL**: Each individual allocation (for a single symbol) must not exceed 8% of my **Raw Net Liquidating Value ($${rawNetLiquidity.toFixed(2)})**, which equals $${maxAllocationPerSymbol.toFixed(2)}.
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %' and highest 'IVR' (Implied Volatility Rank).
       - Select strikes with delta close to -0.35 (representing slightly closer to the money for higher yields).
@@ -1408,6 +1625,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       - Ensure that any recommended option contract expires at least 2 days prior to the earnings release (to avoid binary gap-down risk).
       - The total sum of all recommended allocations must not exceed $${netLiquidity.toFixed(2)}.
       - Provide the ENTIRE response as valid HTML.
+      - **CRITICAL INSTRUCTION**: At the very beginning of the response, **always start with an HTML section explaining the Net Liquidity / Cash Available calculation exactly as detailed above** (including Raw Balances, OTM/ITM CSPs, OTM/ITM CCs, and the final step-by-step Projected Cash formula) so that I can see the complete math breakdown on my screen before the recommendations table.
       - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %, IVR, Delta.
       - In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href="https://finance.yahoo.com/quote/SYMBOL" target="_blank">SYMBOL</a>.
       - Include the brief reasoning for the selection as HTML paragraphs or lists below the table.
@@ -1565,12 +1783,10 @@ app.get("/api/progress-monitor", authenticate, async (req, res) => {
   }
 });
 
-// Production routing - Catch all handler
-if (process.env.NODE_ENV === "production") {
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "frontend/build/index.html"));
-  });
-}
+// Catch-all handler to serve index.html for React SPA routing
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "frontend/build/index.html"));
+});
 
 // Enhanced server startup
 const server = app.listen(PORT, () => {
