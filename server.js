@@ -1332,11 +1332,23 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
     const rawCashBalance = parseFloat(accountBalance["cash-balance"]) || 0;
     const rawBuyingPower = parseFloat(accountBalance["buying-power"]) || 0;
 
+    // Determine the current cycle's Friday (upcoming Friday, or today if today is Friday)
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    const dayOfWeek = todayDate.getDay();
+    let daysToFriday = (5 - dayOfWeek + 7) % 7;
+    const currentFriday = new Date(todayDate);
+    currentFriday.setDate(todayDate.getDate() + daysToFriday);
+    currentFriday.setHours(0, 0, 0, 0);
+
     // Filter and classify open positions
     const openPositionsList = positions.filter((p) => p.isOpen);
 
-    const openCSPsList = [];
-    const openCCsList = [];
+    const openCSPsList = []; // Expiring this week
+    const openCCsList = []; // Expiring this week
+
+    const detectedBuildingCSPs = []; // Expiring in future weeks (the new build)
+    const detectedBuildingCCs = []; // Expiring in future weeks (the new build)
 
     openPositionsList.forEach((p) => {
       const currentPrice =
@@ -1350,6 +1362,21 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       const contracts = parseFloat(p.totalOptionContracts) || 0;
       const shares = parseFloat(p.totalShares) || 0;
 
+      // Check if this option expires in a future week (strictly after currentCycleFriday)
+      let isFutureWeek = false;
+      if (p.optionExpirationDate) {
+        const parts = p.optionExpirationDate.split("-");
+        const expDate = new Date(
+          parseInt(parts[0], 10),
+          parseInt(parts[1], 10) - 1,
+          parseInt(parts[2], 10),
+        );
+        expDate.setHours(0, 0, 0, 0);
+        if (expDate > currentFriday) {
+          isFutureWeek = true;
+        }
+      }
+
       if (p.optionType === "P" && shares === 0 && contracts > 0) {
         // Cash Secured Put
         let isITM = false;
@@ -1359,7 +1386,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
           status = isITM ? "ITM" : "OTM";
         }
         const cashRequirement = strikePrice ? strikePrice * contracts * 100 : 0;
-        openCSPsList.push({
+        const putInfo = {
           symbol: p.symbol,
           currentPrice,
           strikePrice,
@@ -1368,7 +1395,13 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
           status,
           cashRequirement,
           expirationDate: p.optionExpirationDate,
-        });
+        };
+
+        if (isFutureWeek) {
+          detectedBuildingCSPs.push(putInfo);
+        } else {
+          openCSPsList.push(putInfo);
+        }
       } else if (p.optionType === "C" && shares > 0 && contracts > 0) {
         // Covered Call
         let isITM = false;
@@ -1380,7 +1413,7 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
         const potentialProceeds = strikePrice
           ? strikePrice * contracts * 100
           : 0;
-        openCCsList.push({
+        const callInfo = {
           symbol: p.symbol,
           currentPrice,
           strikePrice,
@@ -1390,7 +1423,13 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
           potentialProceeds,
           expirationDate: p.optionExpirationDate,
           shares,
-        });
+        };
+
+        if (isFutureWeek) {
+          detectedBuildingCCs.push(callInfo);
+        } else {
+          openCCsList.push(callInfo);
+        }
       }
     });
 
@@ -1429,6 +1468,45 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
 
     // Use projectedCash (Projected Net Liquidity) as the baseline for new allocations
     const netLiquidity = projectedCash;
+
+    // Combine automatically detected ones
+    const combinedBuildingPositions = [];
+
+    // Add automatically detected future week positions
+    detectedBuildingCSPs.forEach((p) => {
+      combinedBuildingPositions.push({
+        symbol: p.symbol,
+        optionType: "P",
+        strikePrice: p.strikePrice,
+        contracts: p.contracts,
+        source: "auto",
+        expirationDate: p.expirationDate,
+        cashRequirement: p.cashRequirement,
+      });
+    });
+
+    detectedBuildingCCs.forEach((p) => {
+      combinedBuildingPositions.push({
+        symbol: p.symbol,
+        optionType: "C",
+        strikePrice: p.strikePrice,
+        contracts: p.contracts,
+        source: "auto",
+        expirationDate: p.expirationDate,
+        potentialProceeds: p.potentialProceeds,
+      });
+    });
+
+    // Total cash reserved for building CSP positions
+    let buildingCspCash = 0;
+    combinedBuildingPositions.forEach((p) => {
+      if (p.optionType === "P") {
+        buildingCspCash += p.strikePrice * p.contracts * 100;
+      }
+    });
+
+    // Remaining cash for new AI recommendations after reserving cash for building CSP positions
+    const adjustedNetLiquidity = Math.max(0, netLiquidity - buildingCspCash);
 
     // Each allocation (for a single symbol) must not exceed 8% of the Raw Net Liquidating Value from Tastytrade
     const maxAllocationPerSymbol = rawNetLiquidity * 0.08;
@@ -1585,7 +1663,21 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       Projected Net Liquidity (Available Cash for New CSPs) Calculation:
       - Formula: Projected Cash = Current Cash Balance - ITM CSP Cash Required + ITM CC Cash Generated
       - Math: $${rawCashBalance.toFixed(2)} - $${itmCspCash.toFixed(2)} + $${itmCcProceeds.toFixed(2)} = $${netLiquidity.toFixed(2)}
-      - Projected Net Liquidity for New CSP Allocations: $${netLiquidity.toFixed(2)}
+      - Projected Net Liquidity (Baseline): $${netLiquidity.toFixed(2)}
+      - Less Cash Reserved for Building CSPs: $${buildingCspCash.toFixed(2)}
+      - Remaining Budget for New AI Recommendations (Adjusted Net Liquidity): $${adjustedNetLiquidity.toFixed(2)}
+
+      New Positions I am Currently Building (Pending Build):
+      ${
+        combinedBuildingPositions.length > 0
+          ? combinedBuildingPositions
+              .map(
+                (p) =>
+                  `- ${p.symbol}: Option Type: ${p.optionType === "P" ? "Cash Secured Put (CSP)" : "Covered Call (CC)"}, Strike $${p.strikePrice}, Contracts: ${p.contracts}, Expiration: ${p.expirationDate || "Future"}${p.optionType === "P" ? `, Cash Reserved: $${(p.strikePrice * p.contracts * 100).toFixed(2)}` : ""} [Detected from Portfolio]`,
+              )
+              .join("\n")
+          : "None"
+      }
 
       Current Open CSP Positions: ${openCSPs
         .map((p) => `${p.symbol} ($${p.strikePrice} Strike)`)
@@ -1616,16 +1708,16 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
 
       Task:
       Recommend a list of new allocations.
-      - **CRITICAL**: Use the calculated **Projected Net Liquidity ($${netLiquidity.toFixed(2)})** as the base for the total allocation budget. The sum of all recommended allocations must not exceed $${netLiquidity.toFixed(2)}.
-      - **CRITICAL**: Each individual allocation (for a single symbol) must not exceed 8% of my **Raw Net Liquidating Value ($${rawNetLiquidity.toFixed(2)})**, which equals $${maxAllocationPerSymbol.toFixed(2)}.
+      - **CRITICAL**: Use the calculated **Remaining Budget for New AI Recommendations ($${adjustedNetLiquidity.toFixed(2)})** as the base for the total recommended allocation budget. The sum of all recommended allocations must not exceed $${adjustedNetLiquidity.toFixed(2)}.
+      - **CRITICAL**: Each individual symbol's total allocation (Existing + Building + Recommended) must not exceed 8% of my **Raw Net Liquidating Value ($${rawNetLiquidity.toFixed(2)})**, which equals $${maxAllocationPerSymbol.toFixed(2)}. This means if I am building or have open positions for a symbol, you must subtract their allocation amounts from the 8% limit to determine the maximum recommended new allocation for that symbol.
       - Allocation amount = Number of contracts * 100 * Strike Price.
       - Prioritize symbols with the highest 'Mid %' and highest 'IVR' (Implied Volatility Rank).
       - Select strikes with delta close to -0.35 (representing slightly closer to the money for higher yields).
-      - You may recommend symbols I already have open positions for.
+      - You may recommend symbols I already have open positions for or are currently building, but ensure their combined allocation remains within the 8% limit.
       - Ensure that any recommended option contract expires at least 2 days prior to the earnings release (to avoid binary gap-down risk).
-      - The total sum of all recommended allocations must not exceed $${netLiquidity.toFixed(2)}.
+      - The total sum of all recommended allocations must not exceed $${adjustedNetLiquidity.toFixed(2)}.
       - Provide the ENTIRE response as valid HTML.
-      - **CRITICAL INSTRUCTION**: At the very beginning of the response, **always start with an HTML section explaining the Net Liquidity / Cash Available calculation exactly as detailed above** (including Raw Balances, OTM/ITM CSPs, OTM/ITM CCs, and the final step-by-step Projected Cash formula) so that I can see the complete math breakdown on my screen before the recommendations table.
+      - **CRITICAL INSTRUCTION**: At the very beginning of the response, **always start with an HTML section explaining the Net Liquidity / Cash Available calculation exactly as detailed above** (including Raw Balances, OTM/ITM CSPs, OTM/ITM CCs, any Pending/Building Positions being created with their cash collateral reservation, and the final step-by-step Projected Cash and Adjusted Net Liquidity formulas) so that I can see the complete math breakdown on my screen before the recommendations table.
       - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %, IVR, Delta.
       - In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href="https://finance.yahoo.com/quote/SYMBOL" target="_blank">SYMBOL</a>.
       - Include the brief reasoning for the selection as HTML paragraphs or lists below the table.
