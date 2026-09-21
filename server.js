@@ -23,6 +23,7 @@ const {
 } = require("./Analyze/index");
 const { getSP500Symbols } = require("./Analyze/sp500");
 const { getSectorETFs } = require("./Analyze/etfs");
+const { generateAllocationPrompt } = require("./cspAllocationEngine");
 const sequelize = require("./models");
 const TransactionHistory = require("./models/TransactionHistory");
 const ClosedPosition = require("./models/ClosedPosition");
@@ -1595,7 +1596,75 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
     // 3. Consult Gemini
     const genAI = new GoogleGenerativeAI(token);
 
-    const prompt = `
+    let prompt;
+    if (!req.body.messages && !req.body.customPrompt) {
+      // Structure fields to match AllocationEngineInput schema
+      const balancesInput = {
+        netLiquidatingValue: rawNetLiquidity,
+        cashBalance: rawCashBalance,
+        derivativeBuyingPower: rawBuyingPower,
+      };
+
+      const positionsInput = openPositionsList
+        .map((p) => {
+          const optionType =
+            p.optionType === "P" ? "CSP" : p.optionType === "C" ? "CC" : null;
+          return {
+            symbol: p.symbol,
+            strike: parseFloat(p.strikePrice) || 0,
+            underlyerPrice: parseFloat(p.currentPrice) || 0,
+            expiration: p.optionExpirationDate || "",
+            contracts: parseFloat(p.totalOptionContracts) || 0,
+            type: optionType,
+          };
+        })
+        .filter((p) => p.type && p.strike > 0 && p.contracts > 0);
+
+      // Map DB Analysis Candidates
+      const candidatesInput = filteredAnalysis.map((a) => ({
+        symbol: a.symbol,
+        price: parseFloat(a.current_price) || 0,
+        strike: parseFloat(a.option_strike_price) || 0,
+        midPct: parseFloat(a.option_mid_percent) || 0,
+        ivr: a.ivr !== null && a.ivr !== undefined ? parseFloat(a.ivr) : 0,
+        delta:
+          a.delta !== null && a.delta !== undefined ? parseFloat(a.delta) : 0,
+        expiration: a.option_expiration_date || "",
+        daysToEarnings:
+          a.days_to_earnings !== null && a.days_to_earnings !== undefined
+            ? parseInt(a.days_to_earnings, 10)
+            : 999,
+      }));
+
+      // Determine deployment mode: MID_WEEK_DEPLOYMENT vs NEXT_CYCLE_ROLL
+      // NEXT_CYCLE_ROLL when starting build on Monday or Friday before expiration
+      const dayOfWeekNum = todayDate.getDay();
+      const planningMode =
+        dayOfWeekNum === 1 || dayOfWeekNum === 5
+          ? "NEXT_CYCLE_ROLL"
+          : "MID_WEEK_DEPLOYMENT";
+
+      const targetDteNum = 7; // standard target cycle weekly length
+      const targetFriday = new Date(currentFriday);
+      targetFriday.setDate(currentFriday.getDate() + 7);
+      const targetCycleExpStr = targetFriday.toISOString().split("T")[0];
+
+      prompt = generateAllocationPrompt({
+        balances: balancesInput,
+        positions: positionsInput,
+        candidates: candidatesInput,
+        mode: planningMode,
+        todayDate: todayDate.toISOString().split("T")[0],
+        currentCycleExp: currentFriday.toISOString().split("T")[0],
+        targetCycleExp: targetCycleExpStr,
+        targetDte: targetDteNum,
+      });
+
+      // Override prompt requirements specifically to format as safe HTML to avoid front-end breakages
+      prompt +=
+        '\n\nCRITICAL FORMAT REQUIREMENT: Even though the general template requests Markdown, you MUST output the final response as valid HTML to render correctly on this custom dashboard. Do not use Markdown. Start directly with an HTML block explaining the Liquidity Calculation math, then display the allocations in an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %, IVR, Delta. In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href="https://finance.yahoo.com/quote/SYMBOL" target="_blank">SYMBOL</a>. End with brief HTML reasoning. Do not use ```html wrappers.';
+    } else {
+      prompt = `
       I need your help to allocate my portfolio for Cash Secured Puts.
       
       Current Account Balances from Tastytrade:
@@ -1719,10 +1788,11 @@ app.post("/api/ai/consult", authenticate, async (req, res) => {
       - Provide the ENTIRE response as valid HTML.
       - **CRITICAL INSTRUCTION**: At the very beginning of the response, **always start with an HTML section explaining the Net Liquidity / Cash Available calculation exactly as detailed above** (including Raw Balances, OTM/ITM CSPs, OTM/ITM CCs, any Pending/Building Positions being created with their cash collateral reservation, and the final step-by-step Projected Cash and Adjusted Net Liquidity formulas) so that I can see the complete math breakdown on my screen before the recommendations table.
       - The main content should be an HTML table with columns: Symbol, Strike, Contracts, Allocation Amount, Mid %, IVR, Delta.
-      - In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href="https://finance.yahoo.com/quote/SYMBOL" target="_blank">SYMBOL</a>.
+      - In the Symbol column, the symbol must be a hyperlink to Yahoo Finance, e.g. <a href=\"https://finance.yahoo.com/quote/SYMBOL\" target=\"_blank\">SYMBOL</a>.
       - Include the brief reasoning for the selection as HTML paragraphs or lists below the table.
       - Do not use Markdown.
     `;
+    }
 
     if (req.body.preview) {
       return res.json({ prompt });
